@@ -63,6 +63,31 @@ export const IPC_CHANNELS = {
   GET_OCR_STATUS: 'get-ocr-status',
   CANCEL_OCR: 'cancel-ocr',
 
+  // Flashcard Decks
+  FLASHCARD_GET_DECKS: 'flashcard-get-decks',
+  FLASHCARD_GET_DECK: 'flashcard-get-deck',
+  FLASHCARD_CREATE_DECK: 'flashcard-create-deck',
+  FLASHCARD_UPDATE_DECK: 'flashcard-update-deck',
+  FLASHCARD_DELETE_DECK: 'flashcard-delete-deck',
+
+  // Flashcards
+  FLASHCARD_GET_CARDS: 'flashcard-get-cards',
+  FLASHCARD_GET_CARD: 'flashcard-get-card',
+  FLASHCARD_ADD_CARD: 'flashcard-add-card',
+  FLASHCARD_UPDATE_CARD: 'flashcard-update-card',
+  FLASHCARD_DELETE_CARD: 'flashcard-delete-card',
+
+  // FSRS / Study
+  FLASHCARD_GET_DUE: 'flashcard-get-due',
+  FLASHCARD_SUBMIT_REVIEW: 'flashcard-submit-review',
+  FLASHCARD_GET_STATS: 'flashcard-get-stats',
+
+  // AI Generation
+  FLASHCARD_GENERATE_AI: 'flashcard-generate-ai',
+
+  // Export
+  FLASHCARD_EXPORT_LEARNBUDDY: 'flashcard-export-learnbuddy',
+
   // Events (Main -> Renderer)
   INDEXING_PROGRESS: 'indexing-progress',
   PDF_ADDED: 'pdf-added',

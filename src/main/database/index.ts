@@ -118,11 +118,66 @@ export async function initDatabase(): Promise<DatabaseInstance> {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Flashcard Decks (can be linked to PDF or global)
+    CREATE TABLE IF NOT EXISTS flashcard_decks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pdf_id INTEGER REFERENCES pdfs(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Flashcards
+    CREATE TABLE IF NOT EXISTS flashcards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      deck_id INTEGER NOT NULL REFERENCES flashcard_decks(id) ON DELETE CASCADE,
+      highlight_id INTEGER REFERENCES highlights(id) ON DELETE SET NULL,
+      front TEXT NOT NULL,
+      back TEXT NOT NULL,
+      card_type TEXT DEFAULT 'basic',
+      cloze_data TEXT,
+      source_page INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- FSRS v4.5 Scheduling Data
+    CREATE TABLE IF NOT EXISTS flashcard_fsrs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      flashcard_id INTEGER UNIQUE NOT NULL REFERENCES flashcards(id) ON DELETE CASCADE,
+      difficulty REAL DEFAULT 0,
+      stability REAL DEFAULT 0,
+      retrievability REAL DEFAULT 1,
+      state INTEGER DEFAULT 0,
+      due DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_review DATETIME,
+      reps INTEGER DEFAULT 0,
+      lapses INTEGER DEFAULT 0,
+      scheduled_days INTEGER DEFAULT 0,
+      elapsed_days INTEGER DEFAULT 0
+    );
+
+    -- Flashcard Review History
+    CREATE TABLE IF NOT EXISTS flashcard_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      flashcard_id INTEGER NOT NULL REFERENCES flashcards(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL,
+      reviewed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      scheduled_days INTEGER,
+      elapsed_days INTEGER,
+      state INTEGER
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_pdfs_file_path ON pdfs(file_path);
     CREATE INDEX IF NOT EXISTS idx_bookmarks_pdf ON bookmarks(pdf_id);
     CREATE INDEX IF NOT EXISTS idx_notes_pdf_page ON notes(pdf_id, page_num);
     CREATE INDEX IF NOT EXISTS idx_highlights_pdf_page ON highlights(pdf_id, page_num);
+    CREATE INDEX IF NOT EXISTS idx_flashcards_deck ON flashcards(deck_id);
+    CREATE INDEX IF NOT EXISTS idx_flashcard_fsrs_due ON flashcard_fsrs(due);
+    CREATE INDEX IF NOT EXISTS idx_flashcard_fsrs_state ON flashcard_fsrs(state);
+    CREATE INDEX IF NOT EXISTS idx_flashcard_reviews_card ON flashcard_reviews(flashcard_id);
   `);
 
   // Run migrations for existing databases

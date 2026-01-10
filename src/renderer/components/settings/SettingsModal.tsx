@@ -389,12 +389,100 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             )}
           </div>
 
+          {/* KI & Flashcard Settings */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              KI & Karteikarten
+            </label>
+
+            {/* OpenAI API Key */}
+            <div className="mb-4">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                OpenAI API-Schlussel
+              </label>
+              <input
+                type="password"
+                value={localSettings.openaiApiKey || ''}
+                onChange={(e) => setLocalSettings({ ...localSettings, openaiApiKey: e.target.value || null })}
+                placeholder="sk-..."
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Erforderlich fur die KI-Karteikarten-Generierung. Erhalte einen Schlussel auf{' '}
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+                  platform.openai.com
+                </a>
+              </p>
+            </div>
+
+            {/* OpenAI Model */}
+            <div className="mb-4">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                KI-Modell
+              </label>
+              <select
+                value={localSettings.openaiModel || 'gpt-4o-mini'}
+                onChange={(e) => setLocalSettings({ ...localSettings, openaiModel: e.target.value as 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo' })}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+              >
+                <option value="gpt-4o-mini">GPT-4o Mini (gunstig, empfohlen)</option>
+                <option value="gpt-4o">GPT-4o (beste Qualitat)</option>
+                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+              </select>
+            </div>
+
+            {/* Flashcard Language */}
+            <div className="mb-4">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                Karteikarten-Sprache
+              </label>
+              <select
+                value={localSettings.flashcardLanguage || 'de'}
+                onChange={(e) => setLocalSettings({ ...localSettings, flashcardLanguage: e.target.value as 'de' | 'en' })}
+                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+              >
+                <option value="de">Deutsch</option>
+                <option value="en">Englisch</option>
+              </select>
+            </div>
+
+            {/* Daily Limits */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Neue Karten/Tag
+                </label>
+                <input
+                  type="number"
+                  value={localSettings.dailyNewCards || 20}
+                  onChange={(e) => setLocalSettings({ ...localSettings, dailyNewCards: parseInt(e.target.value) || 20 })}
+                  min={1}
+                  max={100}
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Reviews/Tag
+                </label>
+                <input
+                  type="number"
+                  value={localSettings.dailyReviewCards || 100}
+                  onChange={(e) => setLocalSettings({ ...localSettings, dailyReviewCards: parseInt(e.target.value) || 100 })}
+                  min={1}
+                  max={500}
+                  className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* App Info */}
           <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
             <div className="text-center text-sm text-gray-500 dark:text-gray-400">
               <p className="font-medium text-gray-700 dark:text-gray-300">PDF-Study</p>
               <p>Version 1.0.0</p>
-              <p className="mt-1">PDF-Suchwerk für effektives Lernen</p>
+              <p className="mt-1">PDF-Suchwerk fur effektives Lernen</p>
             </div>
           </div>
         </div>

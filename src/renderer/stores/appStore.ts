@@ -1,5 +1,20 @@
 import { create } from 'zustand';
-import type { PDFDocument, SearchResult, AppSettings, IndexingStatus, OCRStatus, Bookmark } from '../../shared/types';
+import type {
+  PDFDocument,
+  SearchResult,
+  AppSettings,
+  IndexingStatus,
+  OCRStatus,
+  Bookmark,
+  FlashcardDeck,
+  FlashcardWithFSRS,
+  FlashcardStats,
+} from '../../shared/types';
+
+// Extended type with next intervals
+interface FlashcardWithIntervals extends FlashcardWithFSRS {
+  nextIntervals: { again: string; hard: string; good: string; easy: string };
+}
 
 interface AppState {
   // Settings
@@ -39,10 +54,28 @@ interface AppState {
   setOCRStatus: (status: OCRStatus) => void;
 
   // UI State
-  sidebarView: 'library' | 'search' | 'bookmarks' | 'recent';
-  setSidebarView: (view: 'library' | 'search' | 'bookmarks' | 'recent') => void;
+  sidebarView: 'library' | 'search' | 'bookmarks' | 'recent' | 'flashcards';
+  setSidebarView: (view: 'library' | 'search' | 'bookmarks' | 'recent' | 'flashcards') => void;
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: (open: boolean) => void;
+
+  // Flashcards
+  flashcardDecks: FlashcardDeck[];
+  setFlashcardDecks: (decks: FlashcardDeck[]) => void;
+  currentDeck: FlashcardDeck | null;
+  setCurrentDeck: (deck: FlashcardDeck | null) => void;
+  flashcards: FlashcardWithFSRS[];
+  setFlashcards: (cards: FlashcardWithFSRS[]) => void;
+  dueFlashcards: FlashcardWithIntervals[];
+  setDueFlashcards: (cards: FlashcardWithIntervals[]) => void;
+  flashcardStats: FlashcardStats | null;
+  setFlashcardStats: (stats: FlashcardStats | null) => void;
+  isStudying: boolean;
+  setIsStudying: (studying: boolean) => void;
+  currentStudyCard: FlashcardWithIntervals | null;
+  setCurrentStudyCard: (card: FlashcardWithIntervals | null) => void;
+  studyCardIndex: number;
+  setStudyCardIndex: (index: number) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -118,4 +151,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSidebarView: (sidebarView) => set({ sidebarView }),
   mobileSidebarOpen: false,
   setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
+
+  // Flashcards
+  flashcardDecks: [],
+  setFlashcardDecks: (flashcardDecks) => set({ flashcardDecks }),
+  currentDeck: null,
+  setCurrentDeck: (currentDeck) => set({ currentDeck }),
+  flashcards: [],
+  setFlashcards: (flashcards) => set({ flashcards }),
+  dueFlashcards: [],
+  setDueFlashcards: (dueFlashcards) => set({ dueFlashcards }),
+  flashcardStats: null,
+  setFlashcardStats: (flashcardStats) => set({ flashcardStats }),
+  isStudying: false,
+  setIsStudying: (isStudying) => set({ isStudying }),
+  currentStudyCard: null,
+  setCurrentStudyCard: (currentStudyCard) => set({ currentStudyCard }),
+  studyCardIndex: 0,
+  setStudyCardIndex: (studyCardIndex) => set({ studyCardIndex }),
 }));

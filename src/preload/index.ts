@@ -1,6 +1,29 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { AppSettings, PDFDocument, SearchResult, Tag, Bookmark, Note, IndexingStatus, RecentView, SearchHistoryItem, OCRStatus, OutlineItem, Highlight, HighlightRect } from '../shared/types';
+import type {
+  AppSettings,
+  PDFDocument,
+  SearchResult,
+  Tag,
+  Bookmark,
+  Note,
+  IndexingStatus,
+  RecentView,
+  SearchHistoryItem,
+  OCRStatus,
+  OutlineItem,
+  Highlight,
+  HighlightRect,
+  FlashcardDeck,
+  FlashcardWithFSRS,
+  FlashcardStats,
+  FSRSRating,
+} from '../shared/types';
+
+// Extended FlashcardWithFSRS with next intervals preview
+interface FlashcardWithIntervals extends FlashcardWithFSRS {
+  nextIntervals: { again: string; hard: string; good: string; easy: string };
+}
 
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
@@ -142,6 +165,92 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cancelOCR: (): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.CANCEL_OCR),
 
+  // ============ FLASHCARDS ============
+
+  // Deck Management
+  getFlashcardDecks: (pdfId?: number): Promise<FlashcardDeck[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GET_DECKS, pdfId),
+
+  getFlashcardDeck: (id: number): Promise<FlashcardDeck | undefined> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GET_DECK, id),
+
+  createFlashcardDeck: (name: string, pdfId?: number, description?: string): Promise<number> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_CREATE_DECK, name, pdfId, description),
+
+  updateFlashcardDeck: (id: number, name: string, description?: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_UPDATE_DECK, id, name, description),
+
+  deleteFlashcardDeck: (id: number): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_DELETE_DECK, id),
+
+  // Card Management
+  getFlashcards: (deckId: number): Promise<FlashcardWithFSRS[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GET_CARDS, deckId),
+
+  getFlashcard: (id: number): Promise<FlashcardWithFSRS | undefined> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GET_CARD, id),
+
+  addFlashcard: (
+    deckId: number,
+    front: string,
+    back: string,
+    cardType?: 'basic' | 'cloze',
+    highlightId?: number,
+    sourcePage?: number,
+    clozeData?: string
+  ): Promise<number> =>
+    ipcRenderer.invoke(
+      IPC_CHANNELS.FLASHCARD_ADD_CARD,
+      deckId,
+      front,
+      back,
+      cardType,
+      highlightId,
+      sourcePage,
+      clozeData
+    ),
+
+  updateFlashcard: (
+    id: number,
+    front: string,
+    back: string,
+    cardType?: 'basic' | 'cloze',
+    clozeData?: string
+  ): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_UPDATE_CARD, id, front, back, cardType, clozeData),
+
+  deleteFlashcard: (id: number): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_DELETE_CARD, id),
+
+  // FSRS / Study
+  getDueFlashcards: (deckId?: number, limit?: number): Promise<FlashcardWithIntervals[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GET_DUE, deckId, limit),
+
+  submitFlashcardReview: (flashcardId: number, rating: FSRSRating): Promise<FlashcardWithIntervals> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_SUBMIT_REVIEW, flashcardId, rating),
+
+  getFlashcardStats: (deckId?: number): Promise<FlashcardStats> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GET_STATS, deckId),
+
+  // Export
+  exportToLearnBuddy: (deckId: number): Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string; cardCount?: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_EXPORT_LEARNBUDDY, deckId),
+
+  // AI Generation
+  generateFlashcardsAI: (
+    text: string,
+    options: {
+      model: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo';
+      cardType: 'basic' | 'cloze' | 'mixed';
+      language: 'de' | 'en';
+      count: number;
+    }
+  ): Promise<{
+    success: boolean;
+    cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>;
+    error?: string;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GENERATE_AI, text, options),
+
   // Event Listeners
   onIndexingProgress: (callback: (status: IndexingStatus) => void) => {
     const listener = (_: any, status: IndexingStatus) => callback(status);
@@ -212,6 +321,27 @@ declare global {
       startOCRForPdf: (pdfId: number) => Promise<{ success: boolean; error?: string }>;
       getOCRStatus: () => Promise<OCRStatus>;
       cancelOCR: () => Promise<boolean>;
+      // Flashcard Decks
+      getFlashcardDecks: (pdfId?: number) => Promise<FlashcardDeck[]>;
+      getFlashcardDeck: (id: number) => Promise<FlashcardDeck | undefined>;
+      createFlashcardDeck: (name: string, pdfId?: number, description?: string) => Promise<number>;
+      updateFlashcardDeck: (id: number, name: string, description?: string) => Promise<boolean>;
+      deleteFlashcardDeck: (id: number) => Promise<boolean>;
+      // Flashcards
+      getFlashcards: (deckId: number) => Promise<FlashcardWithFSRS[]>;
+      getFlashcard: (id: number) => Promise<FlashcardWithFSRS | undefined>;
+      addFlashcard: (deckId: number, front: string, back: string, cardType?: 'basic' | 'cloze', highlightId?: number, sourcePage?: number, clozeData?: string) => Promise<number>;
+      updateFlashcard: (id: number, front: string, back: string, cardType?: 'basic' | 'cloze', clozeData?: string) => Promise<boolean>;
+      deleteFlashcard: (id: number) => Promise<boolean>;
+      // FSRS / Study
+      getDueFlashcards: (deckId?: number, limit?: number) => Promise<FlashcardWithIntervals[]>;
+      submitFlashcardReview: (flashcardId: number, rating: FSRSRating) => Promise<FlashcardWithIntervals>;
+      getFlashcardStats: (deckId?: number) => Promise<FlashcardStats>;
+      // Export
+      exportToLearnBuddy: (deckId: number) => Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string; cardCount?: number }>;
+      // AI Generation
+      generateFlashcardsAI: (text: string, options: { model: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo'; cardType: 'basic' | 'cloze' | 'mixed'; language: 'de' | 'en'; count: number }) => Promise<{ success: boolean; cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>; error?: string }>;
+      // Events
       onIndexingProgress: (callback: (status: IndexingStatus) => void) => () => void;
       onPdfAdded: (callback: (pdfs: PDFDocument[]) => void) => () => void;
       onPdfRemoved: (callback: (pdfs: PDFDocument[]) => void) => () => void;

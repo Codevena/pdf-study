@@ -3,6 +3,7 @@ import PDFLibrary from '../library/PDFLibrary';
 import SearchResults from '../search/SearchResults';
 import BookmarkList from '../bookmarks/BookmarkList';
 import RecentViews from '../library/RecentViews';
+import FlashcardTab from '../flashcards/FlashcardTab';
 
 export default function Sidebar() {
   const { sidebarView, setSidebarView, searchResults, pdfs, mobileSidebarOpen, setMobileSidebarOpen } = useAppStore();
@@ -93,6 +94,22 @@ export default function Sidebar() {
             </svg>
           </span>
         </button>
+
+        <button
+          onClick={() => setSidebarView('flashcards')}
+          className={`flex-1 px-2 py-2.5 text-xs font-medium transition-colors ${
+            sidebarView === 'flashcards'
+              ? 'text-primary-600 border-b-2 border-primary-600'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+          }`}
+          title="Karteikarten"
+        >
+          <span className="flex items-center justify-center">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </span>
+        </button>
       </div>
 
       {/* Content - use hidden instead of conditional render to prevent thumbnail reload */}
@@ -108,6 +125,9 @@ export default function Sidebar() {
         </div>
         <div className={`absolute inset-0 overflow-y-auto ${sidebarView === 'recent' ? '' : 'hidden'}`}>
           <RecentViews />
+        </div>
+        <div className={`absolute inset-0 overflow-y-auto ${sidebarView === 'flashcards' ? '' : 'hidden'}`}>
+          <FlashcardTab />
         </div>
       </div>
       </aside>
