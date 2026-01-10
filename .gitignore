@@ -4,25 +4,48 @@ node_modules/
 # Build output
 dist/
 release/
+out/
 
 # User data
 data/
+*.db
+*.sqlite
+
+# Tesseract cache
+tesseract-cache/
 
 # Logs
 *.log
 npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # OS files
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # IDE
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # Environment
 .env
 .env.local
+.env.*.local
 
 # Electron
 *.asar
+*.blockmap
+*.snap
+
+# Test coverage
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
