@@ -1,9 +1,12 @@
-import { useState, useEffect, memo } from 'react';
+import { useState, useEffect, memo, useRef, useMemo, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { useAppStore } from '../../stores/appStore';
 
 // Use same worker as PDFViewer
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+
+const THUMBNAIL_HEIGHT = 240; // Approximate height of each thumbnail item
+const OVERSCAN = 3; // Number of items to render above/below visible area
 
 interface PageThumbnailsProps {
   pdfData: string;
@@ -13,10 +16,80 @@ interface PageThumbnailsProps {
 
 function PageThumbnails({ pdfData, numPages, onClose }: PageThumbnailsProps) {
   const { currentPage, setCurrentPage } = useAppStore();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
 
   const handlePageClick = (pageNum: number) => {
     setCurrentPage(pageNum);
   };
+
+  // Handle scroll events
+  const handleScroll = useCallback(() => {
+    if (containerRef.current) {
+      setScrollTop(containerRef.current.scrollTop);
+    }
+  }, []);
+
+  // Setup scroll and resize observers
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height);
+      }
+    });
+
+    resizeObserver.observe(container);
+    setContainerHeight(container.clientHeight);
+    container.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      resizeObserver.disconnect();
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [handleScroll]);
+
+  // Scroll to current page when opening
+  useEffect(() => {
+    if (containerRef.current && currentPage > 1) {
+      const scrollPosition = (currentPage - 1) * THUMBNAIL_HEIGHT - containerHeight / 2 + THUMBNAIL_HEIGHT / 2;
+      containerRef.current.scrollTop = Math.max(0, scrollPosition);
+    }
+  }, []);
+
+  // Calculate visible range (virtualization)
+  const visibleRange = useMemo(() => {
+    const startIndex = Math.max(0, Math.floor(scrollTop / THUMBNAIL_HEIGHT) - OVERSCAN);
+    const endIndex = Math.min(
+      numPages - 1,
+      Math.ceil((scrollTop + containerHeight) / THUMBNAIL_HEIGHT) + OVERSCAN
+    );
+    return { startIndex, endIndex };
+  }, [scrollTop, containerHeight, numPages]);
+
+  // Create virtual items - only render visible thumbnails
+  const virtualItems = useMemo(() => {
+    const items: Array<{ pageNum: number; style: React.CSSProperties }> = [];
+    for (let i = visibleRange.startIndex; i <= visibleRange.endIndex && i < numPages; i++) {
+      items.push({
+        pageNum: i + 1,
+        style: {
+          position: 'absolute',
+          top: i * THUMBNAIL_HEIGHT,
+          left: 0,
+          right: 0,
+          height: THUMBNAIL_HEIGHT,
+          padding: '4px',
+        },
+      });
+    }
+    return items;
+  }, [numPages, visibleRange]);
+
+  const totalHeight = numPages * THUMBNAIL_HEIGHT;
 
   return (
     <>
@@ -33,7 +106,7 @@ function PageThumbnails({ pdfData, numPages, onClose }: PageThumbnailsProps) {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-          <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Seiten</span>
+          <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Seiten ({numPages})</span>
           <button
             onMouseDown={(e) => {
               e.preventDefault();
@@ -48,17 +121,18 @@ function PageThumbnails({ pdfData, numPages, onClose }: PageThumbnailsProps) {
         </button>
       </div>
 
-      {/* Thumbnails */}
-      <div className="flex-1 overflow-y-auto p-2">
+      {/* Virtualized Thumbnails */}
+      <div ref={containerRef} className="flex-1 overflow-y-auto">
         <Document file={pdfData} loading={null}>
-          <div className="space-y-2">
-            {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-              <PageThumbnailItem
-                key={pageNum}
-                pageNum={pageNum}
-                isActive={currentPage === pageNum}
-                onClick={() => handlePageClick(pageNum)}
-              />
+          <div style={{ height: totalHeight, position: 'relative' }}>
+            {virtualItems.map(({ pageNum, style }) => (
+              <div key={pageNum} style={style}>
+                <PageThumbnailItem
+                  pageNum={pageNum}
+                  isActive={currentPage === pageNum}
+                  onClick={() => handlePageClick(pageNum)}
+                />
+              </div>
             ))}
           </div>
         </Document>

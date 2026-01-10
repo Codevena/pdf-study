@@ -116,6 +116,24 @@ export async function renderPDFPageToImage(
   return pngBuffer;
 }
 
+// Cache PDF data to avoid re-reading the same file multiple times
+let cachedPdfPath: string | null = null;
+let cachedPdfData: Buffer | null = null;
+
+async function getPdfData(pdfPath: string): Promise<Buffer> {
+  if (cachedPdfPath === pdfPath && cachedPdfData) {
+    return cachedPdfData;
+  }
+  cachedPdfData = await fs.readFile(pdfPath);
+  cachedPdfPath = pdfPath;
+  return cachedPdfData;
+}
+
+export function clearPdfCache(): void {
+  cachedPdfPath = null;
+  cachedPdfData = null;
+}
+
 // Process a PDF for OCR - returns pages that need OCR with their text
 export async function processPageOCR(
   pdfPath: string,
@@ -124,7 +142,8 @@ export async function processPageOCR(
   onProgress?: (progress: { page: number; confidence: number }) => void
 ): Promise<OCRResult | null> {
   try {
-    const pdfData = await fs.readFile(pdfPath);
+    // Use cached PDF data for better performance when processing multiple pages
+    const pdfData = await getPdfData(pdfPath);
 
     // Render page to image
     const imageBuffer = await renderPDFPageToImage(pdfData, pageNum);

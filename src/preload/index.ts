@@ -100,6 +100,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPdfTags: (pdfId: number): Promise<Tag[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PDF_TAGS, pdfId),
 
+  getAllPdfTags: (): Promise<Record<number, Tag[]>> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_PDF_TAGS),
+
   // Export
   exportPdfData: (pdfId: number): Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PDF_DATA, pdfId),
@@ -198,6 +201,7 @@ declare global {
       addTagToPdf: (pdfId: number, tagId: number) => Promise<boolean>;
       removeTagFromPdf: (pdfId: number, tagId: number) => Promise<boolean>;
       getPdfTags: (pdfId: number) => Promise<Tag[]>;
+      getAllPdfTags: () => Promise<Record<number, Tag[]>>;
       exportPdfData: (pdfId: number) => Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string }>;
       getHighlights: (pdfId: number, pageNum?: number) => Promise<Highlight[]>;
       addHighlight: (pdfId: number, pageNum: number, color: string, textContent: string, rects: HighlightRect[]) => Promise<number>;

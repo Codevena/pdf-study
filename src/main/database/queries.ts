@@ -172,6 +172,25 @@ export function getPdfTags(db: DatabaseInstance, pdfId: number): Tag[] {
   `).all(pdfId) as Tag[];
 }
 
+// Batch load all PDF tags in a single query (performance optimization)
+export function getAllPdfTagsMap(db: DatabaseInstance): Record<number, Tag[]> {
+  const rows = db.prepare(`
+    SELECT pt.pdf_id as pdfId, t.id, t.name, t.color
+    FROM tags t
+    JOIN pdf_tags pt ON t.id = pt.tag_id
+    ORDER BY t.name
+  `).all() as (Tag & { pdfId: number })[];
+
+  const result: Record<number, Tag[]> = {};
+  for (const row of rows) {
+    if (!result[row.pdfId]) {
+      result[row.pdfId] = [];
+    }
+    result[row.pdfId].push({ id: row.id, name: row.name, color: row.color });
+  }
+  return result;
+}
+
 // Bookmark Queries
 export function getBookmarks(db: DatabaseInstance, pdfId?: number): Bookmark[] {
   if (pdfId !== undefined) {

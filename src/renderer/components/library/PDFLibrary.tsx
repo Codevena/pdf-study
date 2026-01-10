@@ -21,13 +21,14 @@ export default function PDFLibrary() {
   }, []);
 
   const loadAllPdfTags = useCallback(async () => {
+    // Batch load all PDF tags in a single IPC call (performance optimization)
+    const tagsRecord = await window.electronAPI.getAllPdfTags();
     const map = new Map<number, Tag[]>();
-    for (const pdf of pdfs) {
-      const pdfTags = await window.electronAPI.getPdfTags(pdf.id);
-      map.set(pdf.id, pdfTags);
+    for (const [pdfId, tags] of Object.entries(tagsRecord)) {
+      map.set(Number(pdfId), tags);
     }
     setPdfTagsMap(map);
-  }, [pdfs]);
+  }, []);
 
   useEffect(() => {
     loadTags();

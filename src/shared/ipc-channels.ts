@@ -45,6 +45,7 @@ export const IPC_CHANNELS = {
   ADD_TAG_TO_PDF: 'add-tag-to-pdf',
   REMOVE_TAG_FROM_PDF: 'remove-tag-from-pdf',
   GET_PDF_TAGS: 'get-pdf-tags',
+  GET_ALL_PDF_TAGS: 'get-all-pdf-tags',
 
   // Export
   EXPORT_PDF_DATA: 'export-pdf-data',

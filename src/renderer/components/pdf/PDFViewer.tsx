@@ -312,38 +312,47 @@ export default function PDFViewer() {
     }
   }, [currentPage, numPages, goToPage, showNotes, showThumbnails, showToc, showHighlightsSidebar]);
 
-  // Highlight search terms in the text layer
+  // Highlight search terms in the text layer (optimized with early exit)
   const highlightSearchTerms = useCallback(() => {
-    if (!pageRef.current || !searchQuery) return;
+    if (!pageRef.current) return;
 
     const textLayer = pageRef.current.querySelector('.react-pdf__Page__textContent');
     if (!textLayer) return;
 
+    // If no search query, remove all highlights efficiently
+    if (!searchQuery) {
+      textLayer.querySelectorAll('.search-highlight').forEach((span) => {
+        span.classList.remove('search-highlight');
+      });
+      return;
+    }
+
     const spans = textLayer.querySelectorAll('span');
     const searchTerms = searchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0);
 
+    // Use a single loop with classList toggle for better performance
     spans.forEach((span) => {
       const text = span.textContent?.toLowerCase() || '';
       const hasMatch = searchTerms.some(term => text.includes(term));
-
-      if (hasMatch) {
-        span.classList.add('search-highlight');
-      } else {
-        span.classList.remove('search-highlight');
-      }
+      span.classList.toggle('search-highlight', hasMatch);
     });
   }, [searchQuery]);
 
+  // Keyboard handler - only active when PDF is loaded
   useEffect(() => {
+    if (!currentPdf || !pdfData) return;
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+  }, [handleKeyDown, currentPdf, pdfData]);
 
-  // Listen for text selection
+  // Text selection handler - only active when PDF is visible and not loading
   useEffect(() => {
+    if (!currentPdf || loading) return;
+
     document.addEventListener('mouseup', handleTextSelection);
     return () => document.removeEventListener('mouseup', handleTextSelection);
-  }, [handleTextSelection]);
+  }, [handleTextSelection, currentPdf, loading]);
 
   // Apply search highlighting after page renders
   useEffect(() => {
@@ -592,24 +601,27 @@ export default function PDFViewer() {
                       highlightSearchTerms();
                     }}
                   />
-                  {/* Highlight Overlays */}
-                  {highlights.map((highlight) => (
-                    highlight.rects.map((rect, rectIndex) => (
-                      <div
-                        key={`${highlight.id}-${rectIndex}`}
-                        className="absolute pointer-events-none"
-                        style={{
-                          left: `${rect.x}%`,
-                          top: `${rect.y}%`,
-                          width: `${rect.width}%`,
-                          height: `${rect.height}%`,
-                          backgroundColor: highlight.color,
-                          opacity: 0.4,
-                          mixBlendMode: 'multiply',
-                        }}
-                      />
-                    ))
-                  ))}
+                  {/* Highlight Overlays - optimized SVG rendering */}
+                  {highlights.length > 0 && (
+                    <svg
+                      className="absolute inset-0 pointer-events-none"
+                      style={{ width: '100%', height: '100%', mixBlendMode: 'multiply' }}
+                    >
+                      {highlights.map((highlight) => (
+                        highlight.rects.map((rect, rectIndex) => (
+                          <rect
+                            key={`${highlight.id}-${rectIndex}`}
+                            x={`${rect.x}%`}
+                            y={`${rect.y}%`}
+                            width={`${rect.width}%`}
+                            height={`${rect.height}%`}
+                            fill={highlight.color}
+                            fillOpacity={0.4}
+                          />
+                        ))
+                      ))}
+                    </svg>
+                  )}
                 </div>
               )}
             </Document>

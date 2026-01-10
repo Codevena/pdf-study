@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import type { DatabaseInstance } from './database';
 import * as queries from './database/queries';
 import { extractTextFromPDF, computeFileHash, findPDFsInFolder, extractOutline } from './pdf/extractor';
-import { pageNeedsOCR, processPageOCR, terminateWorker } from './pdf/ocr';
+import { pageNeedsOCR, processPageOCR, terminateWorker, clearPdfCache } from './pdf/ocr';
 import { startFileWatcher } from './file-watcher';
 import { generateMarkdown } from './export/markdown';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
@@ -29,6 +29,31 @@ let ocrStatus: OCRStatus = {
 };
 
 let ocrCancelled = false;
+
+// Simple LRU cache for search results (performance optimization)
+const searchCache = new Map<string, { results: any[]; timestamp: number }>();
+const SEARCH_CACHE_MAX_SIZE = 50;
+const SEARCH_CACHE_TTL = 60000; // 1 minute
+
+function getCachedSearchResults(cacheKey: string): any[] | null {
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_TTL) {
+    return cached.results;
+  }
+  if (cached) {
+    searchCache.delete(cacheKey);
+  }
+  return null;
+}
+
+function setCachedSearchResults(cacheKey: string, results: any[]): void {
+  // Evict oldest entries if cache is full
+  if (searchCache.size >= SEARCH_CACHE_MAX_SIZE) {
+    const oldestKey = searchCache.keys().next().value;
+    if (oldestKey) searchCache.delete(oldestKey);
+  }
+  searchCache.set(cacheKey, { results, timestamp: Date.now() });
+}
 
 export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWindow) {
   // Folder Selection
@@ -184,6 +209,9 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
     indexingStatus.currentFile = null;
     mainWindow.webContents.send(IPC_CHANNELS.INDEXING_PROGRESS, indexingStatus);
 
+    // Invalidate search cache after indexing (content may have changed)
+    searchCache.clear();
+
     return queries.getAllPdfs(db);
   });
 
@@ -191,11 +219,24 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
     return indexingStatus;
   });
 
-  // Search
+  // Search (with caching for performance)
   ipcMain.handle(IPC_CHANNELS.SEARCH, (_, query: string) => {
     const searchLimit = parseInt(queries.getSetting(db, 'searchLimit') || '100', 10);
     const searchMode = (queries.getSetting(db, 'searchMode') as 'exact' | 'fuzzy' | 'intelligent') || 'intelligent';
-    return queries.search(db, query, searchLimit, searchMode);
+
+    // Create cache key from query parameters
+    const cacheKey = `${query}|${searchLimit}|${searchMode}`;
+
+    // Check cache first
+    const cachedResults = getCachedSearchResults(cacheKey);
+    if (cachedResults) {
+      return cachedResults;
+    }
+
+    // Execute search and cache results
+    const results = queries.search(db, query, searchLimit, searchMode);
+    setCachedSearchResults(cacheKey, results);
+    return results;
   });
 
   // Bookmarks
@@ -292,6 +333,10 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
 
   ipcMain.handle(IPC_CHANNELS.GET_PDF_TAGS, (_, pdfId: number) => {
     return queries.getPdfTags(db, pdfId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_ALL_PDF_TAGS, () => {
+    return queries.getAllPdfTagsMap(db);
   });
 
   // Export
@@ -522,6 +567,12 @@ async function processOCRForPdf(
   if (!ocrCancelled && (contentSaved || pagesToProcess.length === 0)) {
     queries.markPdfOcrCompleted(db, pdf.id);
   }
+
+  // Clear PDF cache after processing to free memory
+  clearPdfCache();
+
+  // Invalidate search cache since content changed
+  searchCache.clear();
 
   ocrStatus.isProcessing = false;
   ocrStatus.pdfId = null;
