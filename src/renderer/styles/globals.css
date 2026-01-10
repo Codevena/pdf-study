@@ -1,0 +1,131 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --app-region-drag: drag;
+  --app-region-no-drag: no-drag;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Titlebar drag region */
+.titlebar {
+  -webkit-app-region: drag;
+}
+
+.titlebar button,
+.titlebar input {
+  -webkit-app-region: no-drag;
+}
+
+/* PDF Viewer Styles */
+.react-pdf__Page {
+  margin: 0 auto;
+}
+
+.react-pdf__Page__canvas {
+  display: block;
+  margin: 0 auto;
+}
+
+.react-pdf__Page__textContent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 0.2;
+  line-height: 1;
+  user-select: text;
+}
+
+.react-pdf__Page__textContent span {
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0 0;
+}
+
+/* Search highlight in snippets */
+mark {
+  background-color: #fef08a;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Search highlight in PDF text layer */
+.react-pdf__Page__textContent span.search-highlight {
+  background-color: rgba(250, 204, 21, 0.5) !important;
+  border-radius: 2px;
+  opacity: 1 !important;
+}
+
+/* User highlight in PDF text layer */
+.react-pdf__Page__textContent span.user-highlight {
+  --highlight-color: #FFFF00;
+  background-color: var(--highlight-color) !important;
+  opacity: 1 !important;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.react-pdf__Page__textContent span.user-highlight:hover {
+  filter: brightness(0.9);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Dark Mode Styles */
+.dark body {
+  @apply bg-gray-900 text-gray-100;
+}
+
+.dark #root {
+  @apply bg-gray-900;
+}
+
+.dark ::-webkit-scrollbar-track {
+  @apply bg-gray-800;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  @apply bg-gray-600;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
+
+.dark mark {
+  @apply bg-yellow-600/50;
+}
