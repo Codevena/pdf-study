@@ -228,11 +228,20 @@ export async function initDatabase(): Promise<DatabaseInstance> {
 
 function runMigrations(db: DatabaseInstance): void {
   // Check if rects column exists in highlights table
-  const columns = db.prepare("PRAGMA table_info(highlights)").all() as { name: string }[];
-  const hasRectsColumn = columns.some(col => col.name === 'rects');
+  const highlightColumns = db.prepare("PRAGMA table_info(highlights)").all() as { name: string }[];
+  const hasRectsColumn = highlightColumns.some(col => col.name === 'rects');
 
   if (!hasRectsColumn) {
     console.log('Running migration: Adding rects column to highlights table');
     db.exec('ALTER TABLE highlights ADD COLUMN rects TEXT');
+  }
+
+  // Check if tags column exists in notes table
+  const noteColumns = db.prepare("PRAGMA table_info(notes)").all() as { name: string }[];
+  const hasTagsColumn = noteColumns.some(col => col.name === 'tags');
+
+  if (!hasTagsColumn) {
+    console.log('Running migration: Adding tags column to notes table');
+    db.exec('ALTER TABLE notes ADD COLUMN tags TEXT');
   }
 }

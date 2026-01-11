@@ -28,6 +28,8 @@ export const IPC_CHANNELS = {
   GET_NOTES: 'get-notes',
   ADD_NOTE: 'add-note',
   UPDATE_NOTE: 'update-note',
+  UPDATE_NOTE_TAGS: 'update-note-tags',
+  GET_ALL_NOTE_TAGS: 'get-all-note-tags',
   DELETE_NOTE: 'delete-note',
 
   // Recent Views

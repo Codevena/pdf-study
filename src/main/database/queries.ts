@@ -218,27 +218,53 @@ export function removeBookmark(db: DatabaseInstance, pdfId: number, pageNum: num
 }
 
 // Note Queries
+interface NoteRow {
+  id: number;
+  pdfId: number;
+  pageNum: number;
+  content: string;
+  positionX: number | null;
+  positionY: number | null;
+  tags: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function parseNoteRow(row: NoteRow): Note {
+  let tags: string[] = [];
+  if (row.tags) {
+    try {
+      tags = JSON.parse(row.tags);
+    } catch {
+      console.warn(`Failed to parse note tags for id ${row.id}`);
+    }
+  }
+  return { ...row, tags };
+}
+
 export function getNotes(db: DatabaseInstance, pdfId: number, pageNum?: number): Note[] {
   if (pageNum !== undefined) {
-    return db.prepare(`
+    const rows = db.prepare(`
       SELECT id, pdf_id as pdfId, page_num as pageNum, content,
-             position_x as positionX, position_y as positionY,
+             position_x as positionX, position_y as positionY, tags,
              created_at as createdAt, updated_at as updatedAt
       FROM notes WHERE pdf_id = ? AND page_num = ? ORDER BY created_at
-    `).all(pdfId, pageNum) as Note[];
+    `).all(pdfId, pageNum) as NoteRow[];
+    return rows.map(parseNoteRow);
   }
-  return db.prepare(`
+  const rows = db.prepare(`
     SELECT id, pdf_id as pdfId, page_num as pageNum, content,
-           position_x as positionX, position_y as positionY,
+           position_x as positionX, position_y as positionY, tags,
            created_at as createdAt, updated_at as updatedAt
     FROM notes WHERE pdf_id = ? ORDER BY page_num, created_at
-  `).all(pdfId) as Note[];
+  `).all(pdfId) as NoteRow[];
+  return rows.map(parseNoteRow);
 }
 
 export function addNote(db: DatabaseInstance, pdfId: number, pageNum: number, content: string): number {
   const result = db.prepare(`
-    INSERT INTO notes (pdf_id, page_num, content)
-    VALUES (?, ?, ?)
+    INSERT INTO notes (pdf_id, page_num, content, tags)
+    VALUES (?, ?, ?, '[]')
   `).run(pdfId, pageNum, content);
   return result.lastInsertRowid as number;
 }
@@ -249,17 +275,38 @@ export function updateNote(db: DatabaseInstance, id: number, content: string): v
   `).run(content, id);
 }
 
+export function updateNoteTags(db: DatabaseInstance, id: number, tags: string[]): void {
+  db.prepare(`
+    UPDATE notes SET tags = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(JSON.stringify(tags), id);
+}
+
 export function deleteNote(db: DatabaseInstance, id: number): void {
   db.prepare('DELETE FROM notes WHERE id = ?').run(id);
 }
 
 export function getNoteById(db: DatabaseInstance, id: number): Note | null {
-  return db.prepare(`
+  const row = db.prepare(`
     SELECT id, pdf_id as pdfId, page_num as pageNum, content,
-           position_x as positionX, position_y as positionY,
+           position_x as positionX, position_y as positionY, tags,
            created_at as createdAt, updated_at as updatedAt
     FROM notes WHERE id = ?
-  `).get(id) as Note | null;
+  `).get(id) as NoteRow | undefined;
+  return row ? parseNoteRow(row) : null;
+}
+
+export function getAllNoteTags(db: DatabaseInstance): string[] {
+  const rows = db.prepare(`SELECT DISTINCT tags FROM notes WHERE tags IS NOT NULL AND tags != '[]'`).all() as { tags: string }[];
+  const allTags = new Set<string>();
+  for (const row of rows) {
+    try {
+      const tags = JSON.parse(row.tags) as string[];
+      tags.forEach(tag => allTags.add(tag));
+    } catch {
+      // Skip invalid JSON
+    }
+  }
+  return Array.from(allTags).sort();
 }
 
 // Settings Queries

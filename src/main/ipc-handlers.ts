@@ -430,6 +430,15 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
     return true;
   });
 
+  ipcMain.handle(IPC_CHANNELS.UPDATE_NOTE_TAGS, (_, id: number, tags: string[]) => {
+    queries.updateNoteTags(db, id, tags);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_ALL_NOTE_TAGS, () => {
+    return queries.getAllNoteTags(db);
+  });
+
   // Recent Views
   ipcMain.handle(IPC_CHANNELS.GET_RECENT_VIEWS, (_, limit?: number) => {
     return queries.getRecentViews(db, limit);

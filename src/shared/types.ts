@@ -49,6 +49,7 @@ export interface Note {
   content: string;
   positionX: number | null;
   positionY: number | null;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }

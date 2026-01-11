@@ -101,6 +101,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteNote: (id: number): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.DELETE_NOTE, id),
 
+  updateNoteTags: (id: number, tags: string[]): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPDATE_NOTE_TAGS, id, tags),
+
+  getAllNoteTags: (): Promise<string[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_ALL_NOTE_TAGS),
+
   // Recent Views
   getRecentViews: (limit?: number): Promise<RecentView[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_RECENT_VIEWS, limit),
@@ -389,6 +395,8 @@ declare global {
       addNote: (pdfId: number, pageNum: number, content: string) => Promise<number>;
       updateNote: (id: number, content: string) => Promise<boolean>;
       deleteNote: (id: number) => Promise<boolean>;
+      updateNoteTags: (id: number, tags: string[]) => Promise<boolean>;
+      getAllNoteTags: () => Promise<string[]>;
       getRecentViews: (limit?: number) => Promise<RecentView[]>;
       addRecentView: (pdfId: number, pageNum?: number) => Promise<boolean>;
       updateRecentViewPage: (pdfId: number, pageNum: number) => Promise<boolean>;

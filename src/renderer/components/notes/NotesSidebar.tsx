@@ -71,8 +71,15 @@ export default function NotesSidebar({ pdfId, pageNum, onClose, onNavigate }: No
   const [editContent, setEditContent] = useState('');
   const [loading, setLoading] = useState(true);
 
+  // Tagging state
+  const [allTags, setAllTags] = useState<string[]>([]);
+  const [editingTagsFor, setEditingTagsFor] = useState<number | null>(null);
+  const [newTag, setNewTag] = useState('');
+  const [filterTag, setFilterTag] = useState<string | null>(null);
+
   useEffect(() => {
     loadNotes();
+    loadAllTags();
   }, [pdfId, pageNum]);
 
   const loadNotes = async () => {
@@ -86,6 +93,53 @@ export default function NotesSidebar({ pdfId, pageNum, onClose, onNavigate }: No
       setLoading(false);
     }
   };
+
+  const loadAllTags = async () => {
+    try {
+      const tags = await window.electronAPI.getAllNoteTags();
+      setAllTags(tags);
+    } catch (error) {
+      console.error('Error loading tags:', error);
+    }
+  };
+
+  const handleAddTag = async (noteId: number, tag: string) => {
+    const note = notes.find(n => n.id === noteId);
+    if (!note || !tag.trim()) return;
+
+    const normalizedTag = tag.trim().toLowerCase();
+    if (note.tags.includes(normalizedTag)) return;
+
+    const newTags = [...note.tags, normalizedTag];
+    try {
+      await window.electronAPI.updateNoteTags(noteId, newTags);
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, tags: newTags } : n));
+      if (!allTags.includes(normalizedTag)) {
+        setAllTags(prev => [...prev, normalizedTag].sort());
+      }
+      setNewTag('');
+    } catch (error) {
+      console.error('Error adding tag:', error);
+    }
+  };
+
+  const handleRemoveTag = async (noteId: number, tagToRemove: string) => {
+    const note = notes.find(n => n.id === noteId);
+    if (!note) return;
+
+    const newTags = note.tags.filter(t => t !== tagToRemove);
+    try {
+      await window.electronAPI.updateNoteTags(noteId, newTags);
+      setNotes(prev => prev.map(n => n.id === noteId ? { ...n, tags: newTags } : n));
+    } catch (error) {
+      console.error('Error removing tag:', error);
+    }
+  };
+
+  // Filter notes by tag
+  const filteredNotes = filterTag
+    ? notes.filter(n => n.tags.includes(filterTag))
+    : notes;
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
@@ -202,9 +256,24 @@ export default function NotesSidebar({ pdfId, pageNum, onClose, onNavigate }: No
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="font-medium text-gray-900 dark:text-gray-100">
-            Notizen - Seite {pageNum}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium text-gray-900 dark:text-gray-100">
+              Notizen - Seite {pageNum}
+            </h3>
+            {/* Tag Filter */}
+            {allTags.length > 0 && (
+              <select
+                value={filterTag || ''}
+                onChange={(e) => setFilterTag(e.target.value || null)}
+                className="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200"
+              >
+                <option value="">Alle Tags</option>
+                {allTags.map(tag => (
+                  <option key={tag} value={tag}>#{tag}</option>
+                ))}
+              </select>
+            )}
+          </div>
           <button
             onMouseDown={(e) => {
               e.preventDefault();
@@ -245,20 +314,24 @@ export default function NotesSidebar({ pdfId, pageNum, onClose, onNavigate }: No
             <div className="flex items-center justify-center p-8">
               <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
             </div>
-          ) : notes.length === 0 ? (
+          ) : filteredNotes.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-8 text-gray-400 dark:text-gray-500">
               <svg className="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
-              <p className="text-sm">Keine Notizen auf dieser Seite</p>
-              <p className="text-xs mt-1">Drücke 'n' zum Öffnen der Notizen</p>
-              <p className="text-xs mt-2 text-gray-400 dark:text-gray-500">
-                Tipp: [[Buch]] verlinkt zu anderen PDFs
-              </p>
+              <p className="text-sm">{filterTag ? `Keine Notizen mit Tag #${filterTag}` : 'Keine Notizen auf dieser Seite'}</p>
+              {!filterTag && (
+                <>
+                  <p className="text-xs mt-1">Drücke 'n' zum Öffnen der Notizen</p>
+                  <p className="text-xs mt-2 text-gray-400 dark:text-gray-500">
+                    Tipp: [[Buch]] verlinkt zu anderen PDFs
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-              {notes.map((note) => (
+              {filteredNotes.map((note) => (
                 <li key={note.id} className="p-4">
                   {editingId === note.id ? (
                     <div>
@@ -288,6 +361,64 @@ export default function NotesSidebar({ pdfId, pageNum, onClose, onNavigate }: No
                       <p className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap">
                         {renderNoteContent(note.content)}
                       </p>
+
+                      {/* Tags Display */}
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {note.tags.map(tag => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded"
+                          >
+                            #{tag}
+                            {editingTagsFor === note.id && (
+                              <button
+                                onClick={() => handleRemoveTag(note.id, tag)}
+                                className="ml-0.5 hover:text-red-500"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {editingTagsFor === note.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={newTag}
+                              onChange={(e) => setNewTag(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleAddTag(note.id, newTag);
+                                } else if (e.key === 'Escape') {
+                                  setEditingTagsFor(null);
+                                  setNewTag('');
+                                }
+                              }}
+                              placeholder="Tag..."
+                              className="w-16 px-1 py-0.5 text-[10px] border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => {
+                                setEditingTagsFor(null);
+                                setNewTag('');
+                              }}
+                              className="text-[10px] text-gray-500 hover:text-gray-700"
+                            >
+                              Fertig
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setEditingTagsFor(note.id)}
+                            className="px-1 py-0.5 text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+                            title="Tags bearbeiten"
+                          >
+                            +Tag
+                          </button>
+                        )}
+                      </div>
+
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-xs text-gray-400 dark:text-gray-500">
                           {new Date(note.createdAt).toLocaleDateString('de-DE', {
