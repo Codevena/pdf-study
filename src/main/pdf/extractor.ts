@@ -71,6 +71,58 @@ export async function extractTextFromPDF(filePath: string): Promise<PDFInfo> {
   };
 }
 
+/**
+ * Extract text from specific pages of a PDF
+ * @param filePath Path to the PDF file
+ * @param pageNumbers Array of page numbers to extract (1-indexed)
+ * @returns Combined text from the specified pages
+ */
+export async function extractTextFromPages(
+  filePath: string,
+  pageNumbers: number[]
+): Promise<{ text: string; pageCount: number }> {
+  const dataBuffer = await fs.readFile(filePath);
+  const uint8Array = new Uint8Array(dataBuffer);
+
+  const loadingTask = pdfjsLib.getDocument({
+    data: uint8Array,
+    useSystemFonts: true,
+  });
+
+  const pdfDocument = await loadingTask.promise;
+  const pageCount = pdfDocument.numPages;
+
+  // Filter valid page numbers
+  const validPageNumbers = pageNumbers.filter(n => n >= 1 && n <= pageCount);
+
+  const textParts: string[] = [];
+
+  for (const pageNum of validPageNumbers) {
+    try {
+      const page = await pdfDocument.getPage(pageNum);
+      const textContent = await page.getTextContent();
+
+      const pageText = textContent.items
+        .filter((item): item is TextItem => 'str' in item)
+        .map((item) => item.str)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (pageText) {
+        textParts.push(`[Seite ${pageNum}]\n${pageText}`);
+      }
+    } catch (err) {
+      console.error(`Error extracting text from page ${pageNum}:`, err);
+    }
+  }
+
+  return {
+    text: textParts.join('\n\n'),
+    pageCount,
+  };
+}
+
 export async function computeFileHash(filePath: string): Promise<string> {
   const fileBuffer = await fs.readFile(filePath);
   const hashSum = crypto.createHash('md5');

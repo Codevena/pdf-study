@@ -169,6 +169,26 @@ export async function initDatabase(): Promise<DatabaseInstance> {
       state INTEGER
     );
 
+    -- AI-generated outlines for PDFs
+    CREATE TABLE IF NOT EXISTS pdf_ai_outlines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pdf_id INTEGER UNIQUE REFERENCES pdfs(id) ON DELETE CASCADE,
+      outline_json TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- OpenAI API usage tracking for cost calculation
+    CREATE TABLE IF NOT EXISTS api_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      model TEXT NOT NULL,
+      operation TEXT NOT NULL,
+      prompt_tokens INTEGER NOT NULL,
+      completion_tokens INTEGER NOT NULL,
+      total_tokens INTEGER NOT NULL,
+      cost_usd REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_pdfs_file_path ON pdfs(file_path);
     CREATE INDEX IF NOT EXISTS idx_bookmarks_pdf ON bookmarks(pdf_id);

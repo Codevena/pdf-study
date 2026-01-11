@@ -434,3 +434,119 @@ export function updateHighlightColor(db: DatabaseInstance, id: number, color: st
 export function deleteHighlight(db: DatabaseInstance, id: number): void {
   db.prepare('DELETE FROM highlights WHERE id = ?').run(id);
 }
+
+// AI Outline Queries
+export function getAiOutline(db: DatabaseInstance, pdfId: number): string | null {
+  const result = db.prepare(`
+    SELECT outline_json FROM pdf_ai_outlines WHERE pdf_id = ?
+  `).get(pdfId) as { outline_json: string } | undefined;
+  return result?.outline_json ?? null;
+}
+
+export function saveAiOutline(db: DatabaseInstance, pdfId: number, outlineJson: string): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO pdf_ai_outlines (pdf_id, outline_json, created_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+  `).run(pdfId, outlineJson);
+}
+
+export function deleteAiOutline(db: DatabaseInstance, pdfId: number): void {
+  db.prepare('DELETE FROM pdf_ai_outlines WHERE pdf_id = ?').run(pdfId);
+}
+
+// API Usage / Cost Tracking Queries
+export interface ApiUsageRecord {
+  id: number;
+  model: string;
+  operation: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  createdAt: string;
+}
+
+export interface ApiUsageStats {
+  totalCostUsd: number;
+  totalTokens: number;
+  callCount: number;
+  costByModel: Record<string, number>;
+  costByOperation: Record<string, number>;
+  recentUsage: ApiUsageRecord[];
+}
+
+export function addApiUsage(
+  db: DatabaseInstance,
+  model: string,
+  operation: string,
+  promptTokens: number,
+  completionTokens: number,
+  costUsd: number
+): void {
+  db.prepare(`
+    INSERT INTO api_usage (model, operation, prompt_tokens, completion_tokens, total_tokens, cost_usd)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(model, operation, promptTokens, completionTokens, promptTokens + completionTokens, costUsd);
+}
+
+export function getApiUsageStats(db: DatabaseInstance): ApiUsageStats {
+  // Get totals
+  const totals = db.prepare(`
+    SELECT
+      COALESCE(SUM(cost_usd), 0) as totalCostUsd,
+      COALESCE(SUM(total_tokens), 0) as totalTokens,
+      COUNT(*) as callCount
+    FROM api_usage
+  `).get() as { totalCostUsd: number; totalTokens: number; callCount: number };
+
+  // Get cost by model
+  const byModel = db.prepare(`
+    SELECT model, SUM(cost_usd) as cost
+    FROM api_usage
+    GROUP BY model
+  `).all() as { model: string; cost: number }[];
+
+  const costByModel: Record<string, number> = {};
+  for (const row of byModel) {
+    costByModel[row.model] = row.cost;
+  }
+
+  // Get cost by operation
+  const byOperation = db.prepare(`
+    SELECT operation, SUM(cost_usd) as cost
+    FROM api_usage
+    GROUP BY operation
+  `).all() as { operation: string; cost: number }[];
+
+  const costByOperation: Record<string, number> = {};
+  for (const row of byOperation) {
+    costByOperation[row.operation] = row.cost;
+  }
+
+  // Get recent usage (last 20)
+  const recentUsage = db.prepare(`
+    SELECT
+      id, model, operation,
+      prompt_tokens as promptTokens,
+      completion_tokens as completionTokens,
+      total_tokens as totalTokens,
+      cost_usd as costUsd,
+      created_at as createdAt
+    FROM api_usage
+    ORDER BY created_at DESC
+    LIMIT 20
+  `).all() as ApiUsageRecord[];
+
+  return {
+    totalCostUsd: totals.totalCostUsd,
+    totalTokens: totals.totalTokens,
+    callCount: totals.callCount,
+    costByModel,
+    costByOperation,
+    recentUsage,
+  };
+}
+
+export function clearApiUsage(db: DatabaseInstance): void {
+  db.prepare('DELETE FROM api_usage').run();
+}

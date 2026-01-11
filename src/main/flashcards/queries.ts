@@ -8,6 +8,9 @@ import type {
   FlashcardStats,
   FSRSRating,
   FSRSState,
+  HeatmapData,
+  HeatmapDataPoint,
+  HeatmapTimeframe,
 } from '../../shared/types';
 import { createNewFSRSCard, fsrsCardToDb } from './fsrs';
 
@@ -19,7 +22,7 @@ export function getAllDecks(db: DatabaseInstance, pdfId?: number): FlashcardDeck
       d.id, d.pdf_id as pdfId, d.name, d.description,
       d.created_at as createdAt, d.updated_at as updatedAt,
       COUNT(DISTINCT f.id) as cardCount,
-      COUNT(DISTINCT CASE WHEN fs.due <= datetime('now') THEN f.id END) as dueCount
+      COUNT(DISTINCT CASE WHEN datetime(fs.due) <= datetime('now') THEN f.id END) as dueCount
     FROM flashcard_decks d
     LEFT JOIN flashcards f ON f.deck_id = d.id
     LEFT JOIN flashcard_fsrs fs ON fs.flashcard_id = f.id
@@ -43,7 +46,7 @@ export function getDeckById(db: DatabaseInstance, id: number): FlashcardDeck | u
       d.id, d.pdf_id as pdfId, d.name, d.description,
       d.created_at as createdAt, d.updated_at as updatedAt,
       COUNT(DISTINCT f.id) as cardCount,
-      COUNT(DISTINCT CASE WHEN fs.due <= datetime('now') THEN f.id END) as dueCount
+      COUNT(DISTINCT CASE WHEN datetime(fs.due) <= datetime('now') THEN f.id END) as dueCount
     FROM flashcard_decks d
     LEFT JOIN flashcards f ON f.deck_id = d.id
     LEFT JOIN flashcard_fsrs fs ON fs.flashcard_id = f.id
@@ -252,7 +255,7 @@ export function getDueCards(
       fs.scheduled_days as scheduledDays, fs.elapsed_days as elapsedDays
     FROM flashcards f
     JOIN flashcard_fsrs fs ON fs.flashcard_id = f.id
-    WHERE fs.due <= datetime('now')
+    WHERE datetime(fs.due) <= datetime('now')
   `;
 
   if (deckId !== undefined) {
@@ -351,7 +354,7 @@ export function getStats(db: DatabaseInstance, deckId?: number): FlashcardStats 
       SUM(CASE WHEN fs.state = 0 THEN 1 ELSE 0 END) as newCards,
       SUM(CASE WHEN fs.state = 1 THEN 1 ELSE 0 END) as learningCards,
       SUM(CASE WHEN fs.state = 2 THEN 1 ELSE 0 END) as reviewCards,
-      SUM(CASE WHEN fs.due <= datetime('now') THEN 1 ELSE 0 END) as dueToday
+      SUM(CASE WHEN datetime(fs.due) <= datetime('now') THEN 1 ELSE 0 END) as dueToday
     FROM flashcards f
     LEFT JOIN flashcard_fsrs fs ON fs.flashcard_id = f.id
     ${whereClause}
@@ -378,6 +381,123 @@ export function getStats(db: DatabaseInstance, deckId?: number): FlashcardStats 
     reviewCards: stats?.reviewCards ?? 0,
     dueToday: stats?.dueToday ?? 0,
     reviewedToday: reviewedToday?.count ?? 0,
-    streak: 0, // TODO: Calculate streak
+    streak: calculateStreak(db, deckId),
+  };
+}
+
+// ============ HEATMAP QUERIES ============
+
+export function calculateStreak(db: DatabaseInstance, deckId?: number): number {
+  // Get distinct review dates ordered descending
+  let query = `
+    SELECT DISTINCT DATE(reviewed_at) as date
+    FROM flashcard_reviews r
+  `;
+
+  if (deckId !== undefined) {
+    query += ` JOIN flashcards f ON f.id = r.flashcard_id WHERE f.deck_id = ?`;
+  }
+
+  query += ` ORDER BY date DESC`;
+
+  const params = deckId !== undefined ? [deckId] : [];
+  const dates = db.prepare(query).all(...params) as { date: string }[];
+
+  if (dates.length === 0) return 0;
+
+  let streak = 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Check if reviewed today or yesterday (streak not broken if yesterday)
+  const firstDate = new Date(dates[0].date + 'T00:00:00');
+  const diffFromToday = Math.floor((today.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffFromToday > 1) {
+    return 0; // Streak broken - more than 1 day gap
+  }
+
+  // Count consecutive days
+  let expectedDate = new Date(firstDate);
+  for (const { date } of dates) {
+    const currentDate = new Date(date + 'T00:00:00');
+    const diff = Math.floor((expectedDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diff === 0) {
+      streak++;
+      expectedDate.setDate(expectedDate.getDate() - 1);
+    } else {
+      break; // Gap found, streak ends
+    }
+  }
+
+  return streak;
+}
+
+export function getHeatmapData(
+  db: DatabaseInstance,
+  timeframe: HeatmapTimeframe,
+  deckId?: number
+): HeatmapData {
+  // Calculate date range based on timeframe
+  const now = new Date();
+  let startDate: Date;
+
+  switch (timeframe) {
+    case 'week':
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 6); // Last 7 days including today
+      break;
+    case 'month':
+      startDate = new Date(now);
+      startDate.setDate(now.getDate() - 29); // Last 30 days including today
+      break;
+    case 'year':
+      startDate = new Date(now);
+      startDate.setFullYear(now.getFullYear() - 1);
+      startDate.setDate(startDate.getDate() + 1); // 365 days including today
+      break;
+  }
+
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(now);
+  endDate.setHours(23, 59, 59, 999);
+
+  // Build query with optional deck filter
+  let query = `
+    SELECT
+      DATE(reviewed_at) as date,
+      COUNT(*) as count
+    FROM flashcard_reviews r
+  `;
+
+  const params: (string | number)[] = [];
+
+  if (deckId !== undefined) {
+    query += ` JOIN flashcards f ON f.id = r.flashcard_id WHERE f.deck_id = ? AND reviewed_at >= ? AND reviewed_at <= ?`;
+    params.push(deckId, startDate.toISOString(), endDate.toISOString());
+  } else {
+    query += ` WHERE reviewed_at >= ? AND reviewed_at <= ?`;
+    params.push(startDate.toISOString(), endDate.toISOString());
+  }
+
+  query += ` GROUP BY DATE(reviewed_at) ORDER BY date ASC`;
+
+  const rows = db.prepare(query).all(...params) as { date: string; count: number }[];
+
+  // Calculate max count for color intensity
+  const maxCount = rows.reduce((max, row) => Math.max(max, row.count), 0);
+  const totalReviews = rows.reduce((sum, row) => sum + row.count, 0);
+
+  // Calculate streak
+  const streak = calculateStreak(db, deckId);
+
+  return {
+    data: rows,
+    maxCount,
+    totalReviews,
+    streak,
+    startDate: startDate.toISOString().split('T')[0],
+    endDate: endDate.toISOString().split('T')[0],
   };
 }

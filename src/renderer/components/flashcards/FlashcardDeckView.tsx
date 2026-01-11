@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { FlashcardWithFSRS, GeneratedCard } from '../../../shared/types';
 import FlashcardEditor from './FlashcardEditor';
-import FlashcardStudyView from './FlashcardStudyView';
 import AIGeneratorModal from './AIGeneratorModal';
 
 interface FlashcardDeckViewProps {
@@ -18,7 +17,15 @@ export default function FlashcardDeckView({ onBack }: FlashcardDeckViewProps) {
     setDueFlashcards,
     isStudying,
     setIsStudying,
+    currentPdf,
+    pdfs,
+    setMainContentView,
   } = useAppStore();
+
+  // Get the linked PDF for this deck - prioritize deck's linked PDF, fallback to currentPdf
+  const linkedPdf = currentDeck?.pdfId
+    ? pdfs.find(p => p.id === currentDeck.pdfId) ?? currentPdf
+    : currentPdf;
 
   const [showEditor, setShowEditor] = useState(false);
   const [editingCard, setEditingCard] = useState<FlashcardWithFSRS | null>(null);
@@ -85,6 +92,7 @@ export default function FlashcardDeckView({ onBack }: FlashcardDeckViewProps) {
   const handleStartStudy = () => {
     if (dueFlashcards.length > 0) {
       setIsStudying(true);
+      setMainContentView('study');
     }
   };
 
@@ -118,11 +126,6 @@ export default function FlashcardDeckView({ onBack }: FlashcardDeckViewProps) {
   };
 
   if (!currentDeck) return null;
-
-  // Show study view if studying
-  if (isStudying) {
-    return <FlashcardStudyView onComplete={handleStudyComplete} onBack={() => setIsStudying(false)} />;
-  }
 
   // Show editor if creating/editing
   if (showEditor) {
@@ -225,6 +228,9 @@ export default function FlashcardDeckView({ onBack }: FlashcardDeckViewProps) {
         isOpen={showAIGenerator}
         onClose={() => setShowAIGenerator(false)}
         onCardsGenerated={handleAICardsGenerated}
+        pdfPath={linkedPdf?.path}
+        pdfPageCount={linkedPdf?.pageCount}
+        pdfName={linkedPdf?.title}
       />
 
       {/* Card List */}

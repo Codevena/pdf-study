@@ -145,15 +145,18 @@ export function getRetrievability(card: Card, now: Date = new Date()): number {
   return Math.exp(-elapsedDays / card.stability);
 }
 
-// Get human-readable interval string
-export function getIntervalString(days: number): string {
-  if (days < 1) {
-    const minutes = Math.round(days * 24 * 60);
-    if (minutes < 60) {
-      return `${minutes}m`;
-    }
+// Get human-readable interval string from minutes
+export function getIntervalString(minutes: number): string {
+  if (minutes < 1) {
+    return '<1m';
+  }
+  if (minutes < 60) {
+    return `${Math.round(minutes)}m`;
+  }
+  if (minutes < 60 * 24) {
     return `${Math.round(minutes / 60)}h`;
   }
+  const days = minutes / (60 * 24);
   if (days < 30) {
     return `${Math.round(days)}d`;
   }
@@ -170,16 +173,19 @@ export function getNextIntervals(
 ): { again: string; hard: string; good: string; easy: string } {
   const scheduling = scheduler.repeat(card, now);
 
-  // Access by rating enum values (1=Again, 2=Hard, 3=Good, 4=Easy)
-  const getScheduled = (rating: Rating) => {
+  // Calculate actual interval in minutes from now to the due date
+  const getIntervalMinutes = (rating: Rating): number => {
     const result = (scheduling as any)[rating] as RecordLogItem;
-    return result.card.scheduled_days;
+    const dueTime = result.card.due.getTime();
+    const nowTime = now.getTime();
+    const diffMs = dueTime - nowTime;
+    return Math.max(0, diffMs / (1000 * 60)); // Convert ms to minutes
   };
 
   return {
-    again: getIntervalString(getScheduled(Rating.Again)),
-    hard: getIntervalString(getScheduled(Rating.Hard)),
-    good: getIntervalString(getScheduled(Rating.Good)),
-    easy: getIntervalString(getScheduled(Rating.Easy)),
+    again: getIntervalString(getIntervalMinutes(Rating.Again)),
+    hard: getIntervalString(getIntervalMinutes(Rating.Hard)),
+    good: getIntervalString(getIntervalMinutes(Rating.Good)),
+    easy: getIntervalString(getIntervalMinutes(Rating.Easy)),
   };
 }

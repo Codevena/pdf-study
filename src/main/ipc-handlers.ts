@@ -5,8 +5,8 @@ import type { DatabaseInstance } from './database';
 import * as queries from './database/queries';
 import * as flashcardQueries from './flashcards/queries';
 import { dbToFsrsCard, fsrsCardToDb, getNextReview, getNextIntervals } from './flashcards/fsrs';
-import { generateFlashcards } from './flashcards/ai-generator';
-import { extractTextFromPDF, computeFileHash, findPDFsInFolder, extractOutline } from './pdf/extractor';
+import { generateFlashcards, generateOutlineFromText } from './flashcards/ai-generator';
+import { extractTextFromPDF, extractTextFromPages, computeFileHash, findPDFsInFolder, extractOutline } from './pdf/extractor';
 import { pageNeedsOCR, processPageOCR, terminateWorker, clearPdfCache } from './pdf/ocr';
 import { startFileWatcher } from './file-watcher';
 import { generateMarkdown } from './export/markdown';
@@ -90,7 +90,7 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
       searchMode: (queries.getSetting(db, 'searchMode') as 'exact' | 'fuzzy' | 'intelligent') || 'intelligent',
       // OpenAI Settings
       openaiApiKey: queries.getSetting(db, 'openaiApiKey'),
-      openaiModel: (queries.getSetting(db, 'openaiModel') as 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo') || 'gpt-4o-mini',
+      openaiModel: (queries.getSetting(db, 'openaiModel') as 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2') || 'gpt-5-mini',
       // Flashcard Settings
       flashcardLanguage: (queries.getSetting(db, 'flashcardLanguage') as 'de' | 'en') || 'de',
       dailyNewCards: parseInt(queries.getSetting(db, 'dailyNewCards') || '20', 10),
@@ -148,6 +148,67 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
 
   ipcMain.handle(IPC_CHANNELS.GET_PDF_OUTLINE, async (_, filePath: string) => {
     return extractOutline(filePath);
+  });
+
+  // AI-based outline generation
+  ipcMain.handle(IPC_CHANNELS.GENERATE_AI_OUTLINE, async (_, filePath: string, pageCount: number) => {
+    const apiKey = queries.getSetting(db, 'openaiApiKey');
+    if (!apiKey) {
+      return { success: false, error: 'Kein OpenAI API-Schlussel konfiguriert' };
+    }
+
+    const model = (queries.getSetting(db, 'openaiModel') as 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2') || 'gpt-5-mini';
+
+    try {
+      // Extract text from first 15 pages (usually contains TOC)
+      const pagesToExtract = Math.min(15, pageCount);
+      const pageNumbers = Array.from({ length: pagesToExtract }, (_, i) => i + 1);
+      const { text } = await extractTextFromPages(filePath, pageNumbers);
+
+      if (!text || text.length < 100) {
+        return { success: false, error: 'Nicht genug Text gefunden. Moglicherweise ist OCR erforderlich.' };
+      }
+
+      const { outline, usage } = await generateOutlineFromText(apiKey, text, model, pageCount);
+
+      // Track API usage
+      queries.addApiUsage(
+        db,
+        usage.model,
+        'outline_generation',
+        usage.promptTokens,
+        usage.completionTokens,
+        usage.costUsd
+      );
+
+      return { success: true, outline };
+    } catch (error: any) {
+      console.error('AI Outline generation error:', error);
+      return { success: false, error: error.message || 'Fehler bei der KI-Generierung' };
+    }
+  });
+
+  // Get saved AI outline
+  ipcMain.handle(IPC_CHANNELS.GET_AI_OUTLINE, (_, pdfId: number) => {
+    const outlineJson = queries.getAiOutline(db, pdfId);
+    if (outlineJson) {
+      try {
+        return { success: true, outline: JSON.parse(outlineJson) };
+      } catch {
+        return { success: false, error: 'Fehler beim Parsen des Outlines' };
+      }
+    }
+    return { success: false, outline: null };
+  });
+
+  // Save AI outline
+  ipcMain.handle(IPC_CHANNELS.SAVE_AI_OUTLINE, (_, pdfId: number, outline: any[]) => {
+    try {
+      queries.saveAiOutline(db, pdfId, JSON.stringify(outline));
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
   });
 
   // Note: PDF data is now loaded via custom protocol (local-pdf://)
@@ -659,6 +720,14 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
     return flashcardQueries.getStats(db, deckId);
   });
 
+  // Heatmap Handler
+  ipcMain.handle(
+    IPC_CHANNELS.FLASHCARD_GET_HEATMAP,
+    (_, timeframe: 'week' | 'month' | 'year', deckId?: number) => {
+      return flashcardQueries.getHeatmapData(db, timeframe, deckId);
+    }
+  );
+
   // LearnBuddy Export Handler
   ipcMain.handle(IPC_CHANNELS.FLASHCARD_EXPORT_LEARNBUDDY, async (_, deckId: number) => {
     const cards = flashcardQueries.getCardsByDeck(db, deckId);
@@ -727,7 +796,18 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
       }
 
       try {
-        const cards = await generateFlashcards(apiKey, text, options);
+        const { cards, usage } = await generateFlashcards(apiKey, text, options);
+
+        // Track API usage
+        queries.addApiUsage(
+          db,
+          usage.model,
+          'flashcard_generation',
+          usage.promptTokens,
+          usage.completionTokens,
+          usage.costUsd
+        );
+
         return { success: true, cards };
       } catch (error: any) {
         console.error('AI generation error:', error);
@@ -735,6 +815,83 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
       }
     }
   );
+
+  // Get PDF page text for AI generation
+  ipcMain.handle(
+    IPC_CHANNELS.FLASHCARD_GET_PDF_PAGE_TEXT,
+    async (
+      _,
+      filePath: string,
+      pageNumbers: number[]
+    ): Promise<{ success: boolean; text?: string; pageCount?: number; error?: string }> => {
+      try {
+        const result = await extractTextFromPages(filePath, pageNumbers);
+        return { success: true, text: result.text, pageCount: result.pageCount };
+      } catch (error: any) {
+        console.error('PDF text extraction error:', error);
+        return { success: false, error: error.message || 'Fehler beim Extrahieren des PDF-Textes' };
+      }
+    }
+  );
+
+  // Generate flashcards from PDF pages
+  ipcMain.handle(
+    IPC_CHANNELS.FLASHCARD_GENERATE_FROM_PDF,
+    async (
+      _,
+      filePath: string,
+      pageNumbers: number[],
+      options: {
+        model: OpenAIModel;
+        cardType: 'basic' | 'cloze' | 'mixed';
+        language: 'de' | 'en';
+        count: number;
+      }
+    ): Promise<{ success: boolean; cards?: GeneratedCard[]; error?: string }> => {
+      const apiKey = queries.getSetting(db, 'openaiApiKey');
+
+      if (!apiKey) {
+        return { success: false, error: 'OpenAI API-Schlussel nicht konfiguriert. Bitte in den Einstellungen hinterlegen.' };
+      }
+
+      try {
+        // Extract text from the specified pages
+        const { text } = await extractTextFromPages(filePath, pageNumbers);
+
+        if (!text.trim()) {
+          return { success: false, error: 'Kein Text auf den ausgewahlten Seiten gefunden.' };
+        }
+
+        // Generate flashcards from the extracted text
+        const { cards, usage } = await generateFlashcards(apiKey, text, options);
+
+        // Track API usage
+        queries.addApiUsage(
+          db,
+          usage.model,
+          'flashcard_generation_pdf',
+          usage.promptTokens,
+          usage.completionTokens,
+          usage.costUsd
+        );
+
+        return { success: true, cards };
+      } catch (error: any) {
+        console.error('PDF AI generation error:', error);
+        return { success: false, error: error.message || 'Fehler bei der KI-Generierung' };
+      }
+    }
+  );
+
+  // API Usage Stats
+  ipcMain.handle(IPC_CHANNELS.API_GET_USAGE_STATS, () => {
+    return queries.getApiUsageStats(db);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.API_CLEAR_USAGE, () => {
+    queries.clearApiUsage(db);
+    return { success: true };
+  });
 }
 
 // Process OCR for a single PDF

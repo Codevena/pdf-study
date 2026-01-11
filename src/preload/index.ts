@@ -18,6 +18,7 @@ import type {
   FlashcardWithFSRS,
   FlashcardStats,
   FSRSRating,
+  HeatmapData,
 } from '../shared/types';
 
 // Extended FlashcardWithFSRS with next intervals preview
@@ -47,6 +48,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getPdfOutline: (filePath: string): Promise<OutlineItem[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_PDF_OUTLINE, filePath),
+
+  generateAIOutline: (
+    filePath: string,
+    pageCount: number
+  ): Promise<{ success: boolean; outline?: OutlineItem[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GENERATE_AI_OUTLINE, filePath, pageCount),
+
+  getAIOutline: (pdfId: number): Promise<{ success: boolean; outline?: OutlineItem[]; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_AI_OUTLINE, pdfId),
+
+  saveAIOutline: (pdfId: number, outline: OutlineItem[]): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SAVE_AI_OUTLINE, pdfId, outline),
 
   indexPdfs: (): Promise<PDFDocument[]> =>
     ipcRenderer.invoke(IPC_CHANNELS.INDEX_PDFS),
@@ -236,11 +249,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportToLearnBuddy: (deckId: number): Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string; cardCount?: number }> =>
     ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_EXPORT_LEARNBUDDY, deckId),
 
+  // Heatmap
+  getFlashcardHeatmap: (
+    timeframe: 'week' | 'month' | 'year',
+    deckId?: number
+  ): Promise<HeatmapData> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GET_HEATMAP, timeframe, deckId),
+
   // AI Generation
   generateFlashcardsAI: (
     text: string,
     options: {
-      model: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo';
+      model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2';
       cardType: 'basic' | 'cloze' | 'mixed';
       language: 'de' | 'en';
       count: number;
@@ -250,6 +270,51 @@ contextBridge.exposeInMainWorld('electronAPI', {
     cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>;
     error?: string;
   }> => ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GENERATE_AI, text, options),
+
+  // AI Generation from PDF
+  generateFlashcardsFromPDF: (
+    filePath: string,
+    pageNumbers: number[],
+    options: {
+      model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2';
+      cardType: 'basic' | 'cloze' | 'mixed';
+      language: 'de' | 'en';
+      count: number;
+    }
+  ): Promise<{
+    success: boolean;
+    cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>;
+    error?: string;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GENERATE_FROM_PDF, filePath, pageNumbers, options),
+
+  // PDF Page Text Extraction
+  getPdfPageText: (
+    filePath: string,
+    pageNumbers: number[]
+  ): Promise<{ success: boolean; text?: string; pageCount?: number; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GET_PDF_PAGE_TEXT, filePath, pageNumbers),
+
+  // API Usage / Cost Tracking
+  getApiUsageStats: (): Promise<{
+    totalCostUsd: number;
+    totalTokens: number;
+    callCount: number;
+    costByModel: Record<string, number>;
+    costByOperation: Record<string, number>;
+    recentUsage: Array<{
+      id: number;
+      model: string;
+      operation: string;
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+      costUsd: number;
+      createdAt: string;
+    }>;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.API_GET_USAGE_STATS),
+
+  clearApiUsage: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.API_CLEAR_USAGE),
 
   // Event Listeners
   onIndexingProgress: (callback: (status: IndexingStatus) => void) => {
@@ -287,6 +352,9 @@ declare global {
       getPdfs: () => Promise<PDFDocument[]>;
       getPdf: (id: number) => Promise<PDFDocument | undefined>;
       getPdfOutline: (filePath: string) => Promise<OutlineItem[]>;
+      generateAIOutline: (filePath: string, pageCount: number) => Promise<{ success: boolean; outline?: OutlineItem[]; error?: string }>;
+      getAIOutline: (pdfId: number) => Promise<{ success: boolean; outline?: OutlineItem[]; error?: string }>;
+      saveAIOutline: (pdfId: number, outline: OutlineItem[]) => Promise<{ success: boolean; error?: string }>;
       indexPdfs: () => Promise<PDFDocument[]>;
       getIndexingStatus: () => Promise<IndexingStatus>;
       search: (query: string) => Promise<SearchResult[]>;
@@ -337,10 +405,19 @@ declare global {
       getDueFlashcards: (deckId?: number, limit?: number) => Promise<FlashcardWithIntervals[]>;
       submitFlashcardReview: (flashcardId: number, rating: FSRSRating) => Promise<FlashcardWithIntervals>;
       getFlashcardStats: (deckId?: number) => Promise<FlashcardStats>;
+      // Heatmap
+      getFlashcardHeatmap: (timeframe: 'week' | 'month' | 'year', deckId?: number) => Promise<HeatmapData>;
       // Export
       exportToLearnBuddy: (deckId: number) => Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string; cardCount?: number }>;
       // AI Generation
-      generateFlashcardsAI: (text: string, options: { model: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo'; cardType: 'basic' | 'cloze' | 'mixed'; language: 'de' | 'en'; count: number }) => Promise<{ success: boolean; cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>; error?: string }>;
+      generateFlashcardsAI: (text: string, options: { model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2'; cardType: 'basic' | 'cloze' | 'mixed'; language: 'de' | 'en'; count: number }) => Promise<{ success: boolean; cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>; error?: string }>;
+      // AI Generation from PDF
+      generateFlashcardsFromPDF: (filePath: string, pageNumbers: number[], options: { model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2'; cardType: 'basic' | 'cloze' | 'mixed'; language: 'de' | 'en'; count: number }) => Promise<{ success: boolean; cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>; error?: string }>;
+      // PDF Page Text Extraction
+      getPdfPageText: (filePath: string, pageNumbers: number[]) => Promise<{ success: boolean; text?: string; pageCount?: number; error?: string }>;
+      // API Usage / Cost Tracking
+      getApiUsageStats: () => Promise<{ totalCostUsd: number; totalTokens: number; callCount: number; costByModel: Record<string, number>; costByOperation: Record<string, number>; recentUsage: Array<{ id: number; model: string; operation: string; promptTokens: number; completionTokens: number; totalTokens: number; costUsd: number; createdAt: string }> }>;
+      clearApiUsage: () => Promise<{ success: boolean }>;
       // Events
       onIndexingProgress: (callback: (status: IndexingStatus) => void) => () => void;
       onPdfAdded: (callback: (pdfs: PDFDocument[]) => void) => () => void;

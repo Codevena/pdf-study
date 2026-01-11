@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import type { FlashcardDeck } from '../../../shared/types';
 import FlashcardDeckView from './FlashcardDeckView';
+import LearningHeatmap from './LearningHeatmap';
 
 export default function FlashcardTab() {
   const {
@@ -12,23 +13,28 @@ export default function FlashcardTab() {
     flashcardStats,
     setFlashcardStats,
     currentPdf,
+    setDueFlashcards,
+    pdfs,
   } = useAppStore();
 
   const [isCreating, setIsCreating] = useState(false);
   const [newDeckName, setNewDeckName] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showAllDecks, setShowAllDecks] = useState(false);
 
   // Load decks on mount
   useEffect(() => {
     loadDecks();
     loadStats();
-  }, [currentPdf]);
+  }, [currentPdf, showAllDecks]);
 
   const loadDecks = async () => {
     try {
       setLoading(true);
-      // If a PDF is open, show decks for that PDF + global decks
-      const decks = await window.electronAPI.getFlashcardDecks(currentPdf?.id);
+      // If showAllDecks is true, pass undefined to get all decks
+      // Otherwise, filter by current PDF
+      const pdfIdFilter = showAllDecks ? undefined : currentPdf?.id;
+      const decks = await window.electronAPI.getFlashcardDecks(pdfIdFilter);
       setFlashcardDecks(decks);
     } catch (error) {
       console.error('Error loading decks:', error);
@@ -72,6 +78,7 @@ export default function FlashcardTab() {
       await window.electronAPI.deleteFlashcardDeck(deckId);
       if (currentDeck?.id === deckId) {
         setCurrentDeck(null);
+        setDueFlashcards([]);
       }
       await loadDecks();
       await loadStats();
@@ -80,9 +87,26 @@ export default function FlashcardTab() {
     }
   };
 
+  // Load due cards when selecting a deck
+  const handleSelectDeck = async (deck: FlashcardDeck) => {
+    setCurrentDeck(deck);
+    try {
+      const due = await window.electronAPI.getDueFlashcards(deck.id);
+      setDueFlashcards(due);
+    } catch (error) {
+      console.error('Error loading due cards:', error);
+    }
+  };
+
   // If a deck is selected, show the deck view
   if (currentDeck) {
-    return <FlashcardDeckView onBack={() => setCurrentDeck(null)} />;
+    return <FlashcardDeckView onBack={async () => {
+      setCurrentDeck(null);
+      setDueFlashcards([]);
+      // Reload decks and stats to reflect any changes
+      await loadDecks();
+      await loadStats();
+    }} />;
   }
 
   return (
@@ -115,6 +139,9 @@ export default function FlashcardTab() {
           </div>
         </div>
       )}
+
+      {/* Learning Heatmap */}
+      <LearningHeatmap />
 
       {/* Create Deck Button */}
       {!isCreating ? (
@@ -158,12 +185,28 @@ export default function FlashcardTab() {
         </form>
       )}
 
-      {/* Current PDF Info */}
-      {currentPdf && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 px-1">
-          Decks fur: <span className="font-medium">{currentPdf.fileName}</span>
+      {/* Filter Toggle */}
+      <div className="flex items-center justify-between px-1">
+        <div className="text-xs text-gray-500 dark:text-gray-400">
+          {showAllDecks ? (
+            <span>Alle Decks</span>
+          ) : currentPdf ? (
+            <span>Decks fur: <span className="font-medium">{currentPdf.fileName}</span></span>
+          ) : (
+            <span>Alle Decks</span>
+          )}
         </div>
-      )}
+        <button
+          onClick={() => setShowAllDecks(!showAllDecks)}
+          className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+            showAllDecks
+              ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+          }`}
+        >
+          {showAllDecks ? 'Alle anzeigen' : 'Alle PDFs'}
+        </button>
+      </div>
 
       {/* Deck List */}
       <div className="space-y-2">
@@ -181,14 +224,21 @@ export default function FlashcardTab() {
             <p className="text-xs mt-1">Erstelle dein erstes Deck!</p>
           </div>
         ) : (
-          flashcardDecks.map((deck) => (
-            <DeckCard
-              key={deck.id}
-              deck={deck}
-              onClick={() => setCurrentDeck(deck)}
-              onDelete={() => handleDeleteDeck(deck.id)}
-            />
-          ))
+          flashcardDecks.map((deck) => {
+            // Find the PDF name if showing all decks
+            const pdfName = showAllDecks && deck.pdfId
+              ? pdfs.find(p => p.id === deck.pdfId)?.fileName
+              : undefined;
+            return (
+              <DeckCard
+                key={deck.id}
+                deck={deck}
+                onClick={() => handleSelectDeck(deck)}
+                onDelete={() => handleDeleteDeck(deck.id)}
+                pdfName={pdfName}
+              />
+            );
+          })
         )}
       </div>
     </div>
@@ -199,9 +249,10 @@ interface DeckCardProps {
   deck: FlashcardDeck;
   onClick: () => void;
   onDelete: () => void;
+  pdfName?: string;
 }
 
-function DeckCard({ deck, onClick, onDelete }: DeckCardProps) {
+function DeckCard({ deck, onClick, onDelete, pdfName }: DeckCardProps) {
   return (
     <div
       className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary-300 dark:hover:border-primary-600 cursor-pointer transition-colors group"
@@ -212,6 +263,14 @@ function DeckCard({ deck, onClick, onDelete }: DeckCardProps) {
           <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
             {deck.name}
           </h3>
+          {pdfName && (
+            <p className="text-[10px] text-primary-600 dark:text-primary-400 mt-0.5 truncate flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              {pdfName}
+            </p>
+          )}
           {deck.description && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">
               {deck.description}

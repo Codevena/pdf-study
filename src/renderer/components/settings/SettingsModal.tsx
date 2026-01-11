@@ -22,11 +22,31 @@ const AVAILABLE_LANGUAGES = [
   { code: 'jpn', name: 'Japanisch' },
 ];
 
+interface ApiUsageStats {
+  totalCostUsd: number;
+  totalTokens: number;
+  callCount: number;
+  costByModel: Record<string, number>;
+  costByOperation: Record<string, number>;
+  recentUsage: Array<{
+    id: number;
+    model: string;
+    operation: string;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    costUsd: number;
+    createdAt: string;
+  }>;
+}
+
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { settings, setSettings, setPdfs, ocrStatus } = useAppStore();
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(settings);
   const [saving, setSaving] = useState(false);
   const [ocrMessage, setOcrMessage] = useState<string | null>(null);
+  const [apiUsage, setApiUsage] = useState<ApiUsageStats | null>(null);
+  const [loadingUsage, setLoadingUsage] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -38,8 +58,27 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     // Clear OCR message when modal opens/closes
     if (isOpen) {
       setOcrMessage(null);
+      loadApiUsage();
     }
   }, [isOpen]);
+
+  const loadApiUsage = async () => {
+    setLoadingUsage(true);
+    try {
+      const stats = await window.electronAPI.getApiUsageStats();
+      setApiUsage(stats);
+    } catch (error) {
+      console.error('Error loading API usage:', error);
+    } finally {
+      setLoadingUsage(false);
+    }
+  };
+
+  const handleClearUsage = async () => {
+    if (!confirm('API-Nutzungsstatistiken wirklich loschen?')) return;
+    await window.electronAPI.clearApiUsage();
+    await loadApiUsage();
+  };
 
   const handleThemeChange = (newTheme: 'light' | 'dark') => {
     setLocalSettings({ ...localSettings!, theme: newTheme });
@@ -421,13 +460,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 KI-Modell
               </label>
               <select
-                value={localSettings.openaiModel || 'gpt-4o-mini'}
-                onChange={(e) => setLocalSettings({ ...localSettings, openaiModel: e.target.value as 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo' })}
+                value={localSettings.openaiModel || 'gpt-5-mini'}
+                onChange={(e) => setLocalSettings({ ...localSettings, openaiModel: e.target.value as 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2' })}
                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
               >
-                <option value="gpt-4o-mini">GPT-4o Mini (gunstig, empfohlen)</option>
-                <option value="gpt-4o">GPT-4o (beste Qualitat)</option>
-                <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                <option value="gpt-5-nano">GPT-5 Nano (schnell & gunstig)</option>
+                <option value="gpt-5-mini">GPT-5 Mini (empfohlen)</option>
+                <option value="gpt-5.2">GPT-5.2 (beste Qualitat)</option>
               </select>
             </div>
 
@@ -475,6 +514,97 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 />
               </div>
             </div>
+
+            {/* API Cost Tracker */}
+            {localSettings.openaiApiKey && (
+              <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    API-Kostenubersicht
+                  </label>
+                  <button
+                    onClick={handleClearUsage}
+                    className="text-xs text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  >
+                    Zurucksetzen
+                  </button>
+                </div>
+
+                {loadingUsage ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin w-5 h-5 border-2 border-primary-600 border-t-transparent rounded-full mx-auto" />
+                  </div>
+                ) : apiUsage ? (
+                  <div className="space-y-3">
+                    {/* Total Cost */}
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-3 rounded-lg">
+                      <div className="text-2xl font-bold text-green-700 dark:text-green-400">
+                        ${apiUsage.totalCostUsd.toFixed(4)}
+                      </div>
+                      <div className="text-xs text-green-600 dark:text-green-500">
+                        Gesamtkosten ({apiUsage.callCount} API-Aufrufe, {apiUsage.totalTokens.toLocaleString()} Tokens)
+                      </div>
+                    </div>
+
+                    {/* Cost by Model */}
+                    {Object.keys(apiUsage.costByModel).length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Kosten pro Modell</div>
+                        <div className="space-y-1">
+                          {Object.entries(apiUsage.costByModel).map(([model, cost]) => (
+                            <div key={model} className="flex justify-between text-sm">
+                              <span className="text-gray-600 dark:text-gray-400">{model}</span>
+                              <span className="font-medium text-gray-900 dark:text-gray-100">${cost.toFixed(4)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cost by Operation */}
+                    {Object.keys(apiUsage.costByOperation).length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Kosten pro Funktion</div>
+                        <div className="space-y-1">
+                          {Object.entries(apiUsage.costByOperation).map(([op, cost]) => (
+                            <div key={op} className="flex justify-between text-sm">
+                              <span className="text-gray-600 dark:text-gray-400">
+                                {op === 'flashcard_generation' ? 'Karteikarten (Text)' :
+                                 op === 'flashcard_generation_pdf' ? 'Karteikarten (PDF)' :
+                                 op === 'outline_generation' ? 'Inhaltsverzeichnis' : op}
+                              </span>
+                              <span className="font-medium text-gray-900 dark:text-gray-100">${cost.toFixed(4)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recent Usage */}
+                    {apiUsage.recentUsage.length > 0 && (
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Letzte Aufrufe</div>
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {apiUsage.recentUsage.slice(0, 5).map((usage) => (
+                            <div key={usage.id} className="flex justify-between text-xs bg-gray-50 dark:bg-gray-700/50 rounded px-2 py-1">
+                              <span className="text-gray-600 dark:text-gray-400 truncate flex-1">
+                                {usage.operation === 'flashcard_generation' ? 'Karteikarten' :
+                                 usage.operation === 'flashcard_generation_pdf' ? 'Karteikarten (PDF)' :
+                                 usage.operation === 'outline_generation' ? 'Inhaltsverz.' : usage.operation}
+                              </span>
+                              <span className="text-gray-500 dark:text-gray-500 mx-2">{usage.totalTokens} tok</span>
+                              <span className="font-medium text-gray-900 dark:text-gray-100">${usage.costUsd.toFixed(4)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Keine API-Nutzung vorhanden</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* App Info */}

@@ -80,7 +80,7 @@ export interface AppSettings {
   searchMode: 'exact' | 'fuzzy' | 'intelligent';
   // OpenAI Settings
   openaiApiKey: string | null;
-  openaiModel: 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo';
+  openaiModel: OpenAIModel;
   // Flashcard Settings
   flashcardLanguage: 'de' | 'en';
   dailyNewCards: number;
@@ -203,7 +203,7 @@ export interface FlashcardStats {
 }
 
 // AI Generation Types
-export type OpenAIModel = 'gpt-4o-mini' | 'gpt-4o' | 'gpt-4-turbo';
+export type OpenAIModel = 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2';
 
 export interface AIGenerationOptions {
   model: OpenAIModel;
@@ -216,4 +216,21 @@ export interface GeneratedCard {
   front: string;
   back: string;
   cardType: FlashcardType;
+}
+
+// Heatmap Types
+export type HeatmapTimeframe = 'week' | 'month' | 'year';
+
+export interface HeatmapDataPoint {
+  date: string;   // YYYY-MM-DD
+  count: number;
+}
+
+export interface HeatmapData {
+  data: HeatmapDataPoint[];
+  maxCount: number;
+  totalReviews: number;
+  streak: number;
+  startDate: string;
+  endDate: string;
 }

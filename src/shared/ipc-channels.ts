@@ -10,6 +10,9 @@ export const IPC_CHANNELS = {
   GET_PDFS: 'get-pdfs',
   GET_PDF: 'get-pdf',
   GET_PDF_OUTLINE: 'get-pdf-outline',
+  GENERATE_AI_OUTLINE: 'generate-ai-outline',
+  GET_AI_OUTLINE: 'get-ai-outline',
+  SAVE_AI_OUTLINE: 'save-ai-outline',
   INDEX_PDFS: 'index-pdfs',
   GET_INDEXING_STATUS: 'get-indexing-status',
 
@@ -84,9 +87,18 @@ export const IPC_CHANNELS = {
 
   // AI Generation
   FLASHCARD_GENERATE_AI: 'flashcard-generate-ai',
+  FLASHCARD_GENERATE_FROM_PDF: 'flashcard-generate-from-pdf',
+  FLASHCARD_GET_PDF_PAGE_TEXT: 'flashcard-get-pdf-page-text',
 
   // Export
   FLASHCARD_EXPORT_LEARNBUDDY: 'flashcard-export-learnbuddy',
+
+  // Heatmap
+  FLASHCARD_GET_HEATMAP: 'flashcard-get-heatmap',
+
+  // API Usage / Cost Tracking
+  API_GET_USAGE_STATS: 'api-get-usage-stats',
+  API_CLEAR_USAGE: 'api-clear-usage',
 
   // Events (Main -> Renderer)
   INDEXING_PROGRESS: 'indexing-progress',

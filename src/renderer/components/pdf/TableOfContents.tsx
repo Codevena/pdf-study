@@ -3,6 +3,8 @@ import type { OutlineItem } from '../../../shared/types';
 
 interface TableOfContentsProps {
   filePath: string;
+  pageCount: number;
+  pdfId: number;
   onNavigate: (pageIndex: number) => void;
   onClose: () => void;
 }
@@ -68,18 +70,34 @@ function OutlineItemComponent({
   );
 }
 
-export default function TableOfContents({ filePath, onNavigate, onClose }: TableOfContentsProps) {
+export default function TableOfContents({ filePath, pageCount, pdfId, onNavigate, onClose }: TableOfContentsProps) {
   const [outline, setOutline] = useState<OutlineItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isAIGenerated, setIsAIGenerated] = useState(false);
 
   useEffect(() => {
     async function loadOutline() {
       setLoading(true);
       setError(null);
       try {
+        // First try to get the native PDF outline
         const result = await window.electronAPI.getPdfOutline(filePath);
-        setOutline(result);
+        if (result && result.length > 0) {
+          setOutline(result);
+          setIsAIGenerated(false);
+        } else {
+          // No native outline, try to load saved AI outline
+          const aiResult = await window.electronAPI.getAIOutline(pdfId);
+          if (aiResult.success && aiResult.outline && aiResult.outline.length > 0) {
+            setOutline(aiResult.outline);
+            setIsAIGenerated(true);
+          } else {
+            setOutline([]);
+            setIsAIGenerated(false);
+          }
+        }
       } catch (err) {
         console.error('Failed to load outline:', err);
         setError('Fehler beim Laden des Inhaltsverzeichnisses');
@@ -89,7 +107,28 @@ export default function TableOfContents({ filePath, onNavigate, onClose }: Table
     }
 
     loadOutline();
-  }, [filePath]);
+  }, [filePath, pdfId]);
+
+  const handleGenerateAI = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const result = await window.electronAPI.generateAIOutline(filePath, pageCount);
+      if (result.success && result.outline) {
+        setOutline(result.outline);
+        setIsAIGenerated(true);
+        // Save the generated outline
+        await window.electronAPI.saveAIOutline(pdfId, result.outline);
+      } else {
+        setError(result.error || 'Fehler bei der KI-Generierung');
+      }
+    } catch (err: any) {
+      console.error('AI outline generation failed:', err);
+      setError(err.message || 'Fehler bei der KI-Generierung');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   return (
     <>
@@ -136,13 +175,45 @@ export default function TableOfContents({ filePath, onNavigate, onClose }: Table
         )}
 
         {!loading && !error && outline.length === 0 && (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm">
-            Kein Inhaltsverzeichnis vorhanden
+          <div className="text-center py-8">
+            <div className="text-gray-500 dark:text-gray-400 text-sm mb-4">
+              Kein eingebettetes Inhaltsverzeichnis vorhanden
+            </div>
+            <button
+              onClick={handleGenerateAI}
+              disabled={generating}
+              className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 mx-auto"
+            >
+              {generating ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Analysiere PDF...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Mit KI erkennen
+                </>
+              )}
+            </button>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+              Analysiert die ersten Seiten per KI
+            </p>
           </div>
         )}
 
         {!loading && !error && outline.length > 0 && (
           <div>
+            {isAIGenerated && (
+              <div className="mb-3 px-2 py-1.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg flex items-center gap-2 text-xs text-purple-700 dark:text-purple-400">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                KI-generiert - Seitenangaben konnen ungenau sein
+              </div>
+            )}
             {outline.map((item, index) => (
               <OutlineItemComponent
                 key={index}

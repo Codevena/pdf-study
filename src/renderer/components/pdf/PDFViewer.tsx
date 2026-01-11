@@ -633,6 +633,8 @@ export default function PDFViewer() {
       {showToc && currentPdf && (
         <TableOfContents
           filePath={currentPdf.filePath}
+          pageCount={numPages || currentPdf.pageCount || 0}
+          pdfId={currentPdf.id}
           onNavigate={(pageIndex) => goToPage(pageIndex + 1)}
           onClose={() => setShowToc(false)}
         />
