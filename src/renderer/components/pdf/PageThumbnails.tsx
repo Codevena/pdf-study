@@ -93,9 +93,9 @@ function PageThumbnails({ pdfData, numPages, onClose }: PageThumbnailsProps) {
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop - only on mobile */}
       <div
-        className="fixed inset-0 bg-black/30 z-40"
+        className="fixed inset-0 bg-black/30 z-40 md:hidden"
         onMouseDown={onClose}
       />
 
@@ -108,10 +108,7 @@ function PageThumbnails({ pdfData, numPages, onClose }: PageThumbnailsProps) {
         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
           <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Seiten ({numPages})</span>
           <button
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onClose();
-            }}
+            onClick={onClose}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
             title="Schliessen"
           >

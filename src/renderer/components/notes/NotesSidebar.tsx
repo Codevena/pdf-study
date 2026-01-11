@@ -239,9 +239,9 @@ export default function NotesSidebar({ pdfId, pageNum, onClose, onNavigate }: No
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop - only on mobile */}
       <div
-        className="fixed inset-0 bg-black/30 z-40"
+        className="fixed inset-0 bg-black/30 z-40 md:hidden"
         onMouseDown={onClose}
       />
 
@@ -271,10 +271,7 @@ export default function NotesSidebar({ pdfId, pageNum, onClose, onNavigate }: No
             )}
           </div>
           <button
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onClose();
-            }}
+            onClick={onClose}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
           >
             <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

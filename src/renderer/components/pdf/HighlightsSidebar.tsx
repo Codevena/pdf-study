@@ -125,9 +125,9 @@ export default function HighlightsSidebar({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop - only on mobile */}
       <div
-        className="fixed inset-0 bg-black/30 z-40"
+        className="fixed inset-0 bg-black/30 z-40 md:hidden"
         onMouseDown={onClose}
       />
 
@@ -142,10 +142,7 @@ export default function HighlightsSidebar({
             Markierungen ({highlights.length})
           </h3>
           <button
-            onMouseDown={(e) => {
-              e.preventDefault();
-              onClose();
-            }}
+            onClick={onClose}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
             title="Schließen"
           >
