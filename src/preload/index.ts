@@ -261,13 +261,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     text: string,
     options: {
       model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2';
-      cardType: 'basic' | 'cloze' | 'mixed';
       language: 'de' | 'en';
       count: number;
     }
   ): Promise<{
     success: boolean;
-    cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>;
+    cards?: Array<{ front: string; back: string; cardType: 'basic' }>;
     error?: string;
   }> => ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GENERATE_AI, text, options),
 
@@ -277,13 +276,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pageNumbers: number[],
     options: {
       model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2';
-      cardType: 'basic' | 'cloze' | 'mixed';
       language: 'de' | 'en';
       count: number;
     }
   ): Promise<{
     success: boolean;
-    cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>;
+    cards?: Array<{ front: string; back: string; cardType: 'basic' }>;
     error?: string;
   }> => ipcRenderer.invoke(IPC_CHANNELS.FLASHCARD_GENERATE_FROM_PDF, filePath, pageNumbers, options),
 
@@ -410,9 +408,9 @@ declare global {
       // Export
       exportToLearnBuddy: (deckId: number) => Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string; cardCount?: number }>;
       // AI Generation
-      generateFlashcardsAI: (text: string, options: { model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2'; cardType: 'basic' | 'cloze' | 'mixed'; language: 'de' | 'en'; count: number }) => Promise<{ success: boolean; cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>; error?: string }>;
+      generateFlashcardsAI: (text: string, options: { model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2'; language: 'de' | 'en'; count: number }) => Promise<{ success: boolean; cards?: Array<{ front: string; back: string; cardType: 'basic' }>; error?: string }>;
       // AI Generation from PDF
-      generateFlashcardsFromPDF: (filePath: string, pageNumbers: number[], options: { model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2'; cardType: 'basic' | 'cloze' | 'mixed'; language: 'de' | 'en'; count: number }) => Promise<{ success: boolean; cards?: Array<{ front: string; back: string; cardType: 'basic' | 'cloze' }>; error?: string }>;
+      generateFlashcardsFromPDF: (filePath: string, pageNumbers: number[], options: { model: 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2'; language: 'de' | 'en'; count: number }) => Promise<{ success: boolean; cards?: Array<{ front: string; back: string; cardType: 'basic' }>; error?: string }>;
       // PDF Page Text Extraction
       getPdfPageText: (filePath: string, pageNumbers: number[]) => Promise<{ success: boolean; text?: string; pageCount?: number; error?: string }>;
       // API Usage / Cost Tracking

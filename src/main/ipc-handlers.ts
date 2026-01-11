@@ -784,7 +784,6 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
       text: string,
       options: {
         model: OpenAIModel;
-        cardType: 'basic' | 'cloze' | 'mixed';
         language: 'de' | 'en';
         count: number;
       }
@@ -843,7 +842,6 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
       pageNumbers: number[],
       options: {
         model: OpenAIModel;
-        cardType: 'basic' | 'cloze' | 'mixed';
         language: 'de' | 'en';
         count: number;
       }

@@ -60,6 +60,10 @@ interface AppState {
   setMobileSidebarOpen: (open: boolean) => void;
   mainContentView: 'pdf' | 'study';
   setMainContentView: (view: 'pdf' | 'study') => void;
+  showStudyDeckSelector: boolean;
+  setShowStudyDeckSelector: (show: boolean) => void;
+  studyDeckId: number | null;
+  setStudyDeckId: (deckId: number | null) => void;
 
   // Flashcards
   flashcardDecks: FlashcardDeck[];
@@ -155,6 +159,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
   mainContentView: 'pdf',
   setMainContentView: (mainContentView) => set({ mainContentView }),
+  showStudyDeckSelector: false,
+  setShowStudyDeckSelector: (showStudyDeckSelector) => set({ showStudyDeckSelector }),
+  studyDeckId: null,
+  setStudyDeckId: (studyDeckId) => set({ studyDeckId }),
 
   // Flashcards
   flashcardDecks: [],

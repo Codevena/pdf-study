@@ -145,13 +145,12 @@ export default function AIGeneratorModal({
         result = await window.electronAPI.generateFlashcardsFromPDF(
           pdfPath,
           selectedPages,
-          { model, cardType, language, count }
+          { model, language, count }
         );
       } else if (inputMode === 'text' && text.trim()) {
         // Generate from text
         result = await window.electronAPI.generateFlashcardsAI(text, {
           model,
-          cardType,
           language,
           count,
         });

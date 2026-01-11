@@ -3,7 +3,6 @@ import type { OpenAIModel, GeneratedCard, FlashcardType, OutlineItem } from '../
 
 interface GenerationOptions {
   model: OpenAIModel;
-  cardType: 'basic' | 'cloze' | 'mixed';
   language: 'de' | 'en';
   count: number;
 }
@@ -32,8 +31,7 @@ function calculateCost(model: string, promptTokens: number, completionTokens: nu
 }
 
 const SYSTEM_PROMPTS = {
-  de: {
-    basic: `Du bist ein Experte fur die Erstellung von Lernkarteikarten. Erstelle Karteikarten im Frage-Antwort-Format.
+  de: `Du bist ein Experte fur die Erstellung von Lernkarteikarten. Erstelle Karteikarten im Frage-Antwort-Format.
 
 Regeln:
 - Jede Karte hat eine klare, prazise Frage auf der Vorderseite
@@ -42,25 +40,7 @@ Regeln:
 - Vermeide zu lange oder komplexe Antworten
 - Formuliere die Fragen so, dass sie das Verstandnis prufen`,
 
-    cloze: `Du bist ein Experte fur die Erstellung von Luckentext-Karteikarten (Cloze Deletion).
-
-Regeln:
-- Verwende das Format {{c1::Text}} fur Lucken
-- Mehrere Lucken in einem Satz sind moglich: {{c1::erste Lucke}}, {{c2::zweite Lucke}}
-- Wahle wichtige Begriffe, Definitionen oder Schlusselkonzepte als Lucken
-- Der Satz sollte auch ohne die Lucken verstandlich sein
-- Die Antwort enthalt die Losungen der Lucken`,
-
-    mixed: `Du bist ein Experte fur die Erstellung von Lernkarteikarten. Erstelle eine Mischung aus:
-1. Basic-Karten (Frage-Antwort)
-2. Cloze-Karten mit Lucken im Format {{c1::Text}}
-
-Wahle das Format, das am besten zum Inhalt passt:
-- Definitionen und Fakten eignen sich gut fur Cloze
-- Konzeptuelle Fragen fur Basic-Format`,
-  },
-  en: {
-    basic: `You are an expert at creating flashcards. Create question-answer style flashcards.
+  en: `You are an expert at creating flashcards. Create question-answer style flashcards.
 
 Rules:
 - Each card has a clear, precise question on the front
@@ -68,24 +48,6 @@ Rules:
 - Focus on the most important concepts and facts
 - Avoid overly long or complex answers
 - Phrase questions to test understanding`,
-
-    cloze: `You are an expert at creating cloze deletion flashcards.
-
-Rules:
-- Use the format {{c1::text}} for deletions
-- Multiple deletions in one sentence are allowed: {{c1::first deletion}}, {{c2::second deletion}}
-- Choose important terms, definitions, or key concepts for deletions
-- The sentence should make sense even with the deletions shown
-- The answer contains the solutions`,
-
-    mixed: `You are an expert at creating flashcards. Create a mix of:
-1. Basic cards (question-answer)
-2. Cloze cards with deletions in format {{c1::text}}
-
-Choose the format that best fits the content:
-- Definitions and facts work well for cloze
-- Conceptual questions for basic format`,
-  },
 };
 
 export interface GenerationResult {
@@ -104,15 +66,15 @@ export async function generateFlashcards(
 
   const openai = new OpenAI({ apiKey });
 
-  const systemPrompt = SYSTEM_PROMPTS[options.language][options.cardType];
+  const systemPrompt = SYSTEM_PROMPTS[options.language];
   const userPrompt = options.language === 'de'
     ? `Erstelle genau ${options.count} Karteikarten aus folgendem Text. Antworte NUR mit einem JSON-Array im Format:
-[{"front": "Frage/Text mit Lucken", "back": "Antwort", "cardType": "basic oder cloze"}]
+[{"front": "Frage", "back": "Antwort"}]
 
 Text:
 ${text}`
     : `Create exactly ${options.count} flashcards from the following text. Respond ONLY with a JSON array in format:
-[{"front": "Question/Text with cloze", "back": "Answer", "cardType": "basic or cloze"}]
+[{"front": "Question", "back": "Answer"}]
 
 Text:
 ${text}`;
@@ -150,13 +112,13 @@ ${text}`;
       throw new Error('Konnte keine Karteikarten aus der Antwort extrahieren');
     }
 
-    const rawCards = JSON.parse(jsonMatch[0]) as GeneratedCard[];
+    const rawCards = JSON.parse(jsonMatch[0]) as Array<{ front: string; back: string }>;
 
-    // Validate and normalize cards
-    const cards = rawCards.map((card) => ({
+    // Validate and normalize cards - always basic type
+    const cards: GeneratedCard[] = rawCards.map((card) => ({
       front: card.front?.trim() || '',
       back: card.back?.trim() || '',
-      cardType: (card.cardType === 'cloze' ? 'cloze' : 'basic') as FlashcardType,
+      cardType: 'basic' as FlashcardType,
     })).filter(card => card.front && card.back);
 
     return { cards, usage };
@@ -182,7 +144,6 @@ export async function generateFlashcardsFromHighlight(
 
   return generateFlashcards(apiKey, highlightText, {
     model,
-    cardType: 'mixed',
     language,
     count,
   });
