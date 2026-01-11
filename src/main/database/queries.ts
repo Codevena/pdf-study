@@ -27,6 +27,14 @@ export function getPdfByPath(db: DatabaseInstance, filePath: string): PDFDocumen
   `).get(filePath) as PDFDocument | undefined;
 }
 
+export function getPdfByFileName(db: DatabaseInstance, fileName: string): PDFDocument | undefined {
+  return db.prepare(`
+    SELECT id, file_path as filePath, file_name as fileName, file_hash as fileHash,
+           page_count as pageCount, indexed_at as indexedAt, ocr_completed as ocrCompleted
+    FROM pdfs WHERE LOWER(file_name) = LOWER(?)
+  `).get(fileName) as PDFDocument | undefined;
+}
+
 export function insertPdf(db: DatabaseInstance, pdf: Omit<PDFDocument, 'id' | 'indexedAt' | 'ocrCompleted'>): number {
   const result = db.prepare(`
     INSERT INTO pdfs (file_path, file_name, file_hash, page_count)

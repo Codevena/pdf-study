@@ -1,8 +1,5 @@
 import type { ParsedWikiLink, ResolvedLink, PDFDocument } from '../../shared/types';
-
-// Pattern: [[Book.pdf#p50]] or [[Book#Page50]] or [[Book]]
-// Captures: filename (with or without .pdf), optional page number
-const WIKI_LINK_REGEX = /\[\[([^\]#]+?)(?:\.pdf)?(?:#(?:p|Page)?(\d+))?\]\]/gi;
+import { createWikiLinkRegex } from '../../shared/constants';
 
 /**
  * Parse wiki-links from text content
@@ -15,12 +12,10 @@ const WIKI_LINK_REGEX = /\[\[([^\]#]+?)(?:\.pdf)?(?:#(?:p|Page)?(\d+))?\]\]/gi;
  */
 export function parseWikiLinks(content: string): ParsedWikiLink[] {
   const links: ParsedWikiLink[] = [];
+  const regex = createWikiLinkRegex();
   let match;
 
-  // Reset regex state
-  WIKI_LINK_REGEX.lastIndex = 0;
-
-  while ((match = WIKI_LINK_REGEX.exec(content)) !== null) {
+  while ((match = regex.exec(content)) !== null) {
     const fileName = match[1].trim();
     const normalizedFileName = fileName.toLowerCase().endsWith('.pdf')
       ? fileName
@@ -41,6 +36,7 @@ export function parseWikiLinks(content: string): ParsedWikiLink[] {
 /**
  * Resolve a parsed wiki-link to a PDF document
  * Returns null if the PDF is not found
+ * @deprecated Use resolveLinkWithLookup for better performance
  */
 export function resolveLink(
   link: ParsedWikiLink,
@@ -51,6 +47,28 @@ export function resolveLink(
     (p) => p.fileName.toLowerCase() === link.fileName.toLowerCase()
   );
 
+  return resolveLinkFromPdf(link, pdf);
+}
+
+/**
+ * Resolve a parsed wiki-link using a direct lookup function
+ * More efficient than resolveLink when processing many links
+ */
+export function resolveLinkWithLookup(
+  link: ParsedWikiLink,
+  lookupPdf: (fileName: string) => PDFDocument | undefined
+): ResolvedLink | null {
+  const pdf = lookupPdf(link.fileName);
+  return resolveLinkFromPdf(link, pdf);
+}
+
+/**
+ * Internal helper to resolve link from a PDF document
+ */
+function resolveLinkFromPdf(
+  link: ParsedWikiLink,
+  pdf: PDFDocument | undefined
+): ResolvedLink | null {
   if (!pdf) {
     return null;
   }
@@ -80,8 +98,7 @@ export function extractLinkedPdfNames(content: string): string[] {
  * Check if content contains any wiki-links
  */
 export function hasWikiLinks(content: string): boolean {
-  WIKI_LINK_REGEX.lastIndex = 0;
-  return WIKI_LINK_REGEX.test(content);
+  return createWikiLinkRegex().test(content);
 }
 
 /**

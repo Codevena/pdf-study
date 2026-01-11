@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Note, PDFDocument } from '../../../shared/types';
+import { createWikiLinkRegex } from '../../../shared/constants';
 import LinkAutocomplete from './LinkAutocomplete';
 import BacklinksPanel from './BacklinksPanel';
-
-// Wiki-link regex pattern
-const WIKI_LINK_REGEX = /\[\[([^\]#]+?)(?:\.pdf)?(?:#(?:p|Page)?(\d+))?\]\]/gi;
 
 interface ParsedContent {
   type: 'text' | 'link';
@@ -15,13 +13,11 @@ interface ParsedContent {
 
 function parseNoteContent(content: string): ParsedContent[] {
   const parts: ParsedContent[] = [];
+  const regex = createWikiLinkRegex();
   let lastIndex = 0;
-
-  // Reset regex state
-  WIKI_LINK_REGEX.lastIndex = 0;
-
   let match;
-  while ((match = WIKI_LINK_REGEX.exec(content)) !== null) {
+
+  while ((match = regex.exec(content)) !== null) {
     // Add text before the match
     if (match.index > lastIndex) {
       parts.push({

@@ -11,7 +11,7 @@ import { extractTextFromPDF, extractTextFromPages, computeFileHash, findPDFsInFo
 import { pageNeedsOCR, processPageOCR, terminateWorker, clearPdfCache } from './pdf/ocr';
 import { startFileWatcher } from './file-watcher';
 import { generateMarkdown, generateMarkdownEnhanced } from './export/markdown';
-import { parseWikiLinks, resolveLink } from './links/parser';
+import { parseWikiLinks, resolveLink, resolveLinkWithLookup } from './links/parser';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { AppSettings, IndexingStatus, OCRStatus, HighlightRect, FSRSRating, OpenAIModel, GeneratedCard, ExportOptions, SearchResult } from '../shared/types';
 
@@ -384,12 +384,12 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   ipcMain.handle(IPC_CHANNELS.ADD_NOTE, (_, pdfId: number, pageNum: number, content: string) => {
     const noteId = queries.addNote(db, pdfId, pageNum, content);
 
-    // Index any wiki-links in the note
-    const allPdfs = queries.getAllPdfs(db);
+    // Index any wiki-links in the note (using direct DB lookup for performance)
     const parsedLinks = parseWikiLinks(content);
     if (parsedLinks.length > 0) {
+      const lookupPdf = (fileName: string) => queries.getPdfByFileName(db, fileName);
       const links = parsedLinks.map(link => {
-        const resolved = resolveLink(link, allPdfs);
+        const resolved = resolveLinkWithLookup(link, lookupPdf);
         return {
           targetPdfId: resolved?.pdfId || null,
           targetPageNum: resolved?.pageNum || null,
@@ -405,13 +405,13 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   ipcMain.handle(IPC_CHANNELS.UPDATE_NOTE, (_, id: number, content: string) => {
     queries.updateNote(db, id, content);
 
-    // Re-index links for this note
+    // Re-index links for this note (using direct DB lookup for performance)
     const note = queries.getNoteById(db, id);
     if (note) {
-      const allPdfs = queries.getAllPdfs(db);
+      const lookupPdf = (fileName: string) => queries.getPdfByFileName(db, fileName);
       const parsedLinks = parseWikiLinks(content);
       const links = parsedLinks.map(link => {
-        const resolved = resolveLink(link, allPdfs);
+        const resolved = resolveLinkWithLookup(link, lookupPdf);
         return {
           targetPdfId: resolved?.pdfId || null,
           targetPageNum: resolved?.pageNum || null,
@@ -650,7 +650,6 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   });
 
   ipcMain.handle(IPC_CHANNELS.RESOLVE_LINK, (_, linkText: string) => {
-    const allPdfs = queries.getAllPdfs(db);
     const parsedLinks = parseWikiLinks(linkText);
 
     if (parsedLinks.length === 0) {
@@ -658,20 +657,20 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
     }
 
     const parsed = parsedLinks[0];
-    const resolved = resolveLink(parsed, allPdfs);
+    const pdf = queries.getPdfByFileName(db, parsed.fileName);
 
-    if (!resolved) {
-      return null;
-    }
-
-    const pdf = queries.getPdfById(db, resolved.pdfId);
     if (!pdf) {
       return null;
     }
 
+    // Validate page number is within range
+    const pageNum = parsed.pageNum && parsed.pageNum >= 1 && parsed.pageNum <= pdf.pageCount
+      ? parsed.pageNum
+      : 1;
+
     return {
       pdf,
-      pageNum: resolved.pageNum || 1,
+      pageNum,
     };
   });
 
