@@ -217,27 +217,75 @@ export default function LinkGraphModal({ onClose, onNavigateToPdf }: LinkGraphMo
             </>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3 text-center px-8">
-                <svg
-                  className="w-16 h-16 text-gray-300 dark:text-gray-600"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-                  />
-                </svg>
-                <div className="text-gray-500 dark:text-gray-400">
-                  <p className="font-medium">Keine Verbindungen gefunden</p>
-                  <p className="text-sm mt-1">
-                    Erstelle Wiki-Links in deinen Notizen mit [[PDF-Name#p42]] um Verbindungen zu
-                    sehen.
+              <div className="flex flex-col items-center gap-4 text-center px-8 max-w-md">
+                <div className="w-20 h-20 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
+                  <svg
+                    className="w-10 h-10 text-violet-500"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                    />
+                  </svg>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-200">
+                    Keine Verbindungen gefunden
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    Verbinde deine PDFs mit Wiki-Links in deinen Notizen
                   </p>
                 </div>
+
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4 text-left w-full shadow-sm border border-gray-200 dark:border-gray-700">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">
+                    So erstellst du Verbindungen:
+                  </p>
+                  <ol className="text-sm text-gray-600 dark:text-gray-400 space-y-2">
+                    <li className="flex gap-2">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-violet-600 dark:text-violet-400 text-xs flex items-center justify-center font-medium">
+                        1
+                      </span>
+                      <span>Offne ein PDF und wechsle zur Notizen-Ansicht</span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-violet-600 dark:text-violet-400 text-xs flex items-center justify-center font-medium">
+                        2
+                      </span>
+                      <span>
+                        Schreibe in einer Notiz:{' '}
+                        <code className="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-violet-600 dark:text-violet-400 font-mono text-xs">
+                          [[AnderesPDF#p10]]
+                        </code>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-900/50 text-violet-600 dark:text-violet-400 text-xs flex items-center justify-center font-medium">
+                        3
+                      </span>
+                      <span>Die Verbindung erscheint automatisch im Graph</span>
+                    </li>
+                  </ol>
+                </div>
+
+                <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1.5">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Tipp: Tippe <code className="font-mono">[[</code> um Autovervollstandigung zu
+                  aktivieren
+                </p>
               </div>
             </div>
           )}
