@@ -58,19 +58,19 @@ export default function StudyDeckSelector({ isOpen, onClose, onSelectDeck }: Stu
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xl max-h-[85vh] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-primary-500 to-primary-600">
+        <div className="px-6 py-5 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
                 Lernen starten
               </h2>
-              <p className="text-sm text-primary-100 mt-0.5">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                 Wahle ein Deck zum Lernen aus
               </p>
             </div>
             <button
               onClick={onClose}
-              className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+              className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -81,18 +81,18 @@ export default function StudyDeckSelector({ isOpen, onClose, onSelectDeck }: Stu
 
         {/* Stats Summary */}
         {!loading && totalDue > 0 && (
-          <div className="px-6 py-4 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border-b border-orange-100 dark:border-orange-900/30">
+          <div className="px-6 py-4 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-100 dark:border-primary-900/30">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-amber-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                  {totalDue} Karten
+                <div className="text-lg font-semibold text-primary-700 dark:text-primary-300">
+                  {totalDue} Karten fallig
                 </div>
-                <div className="text-sm text-orange-600/70 dark:text-orange-400/70">
+                <div className="text-sm text-primary-600/70 dark:text-primary-400/70">
                   warten auf dich
                 </div>
               </div>
@@ -122,7 +122,7 @@ export default function StudyDeckSelector({ isOpen, onClose, onSelectDeck }: Stu
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {decks.map((deck) => {
                 const hasDueCards = (deck.dueCount || 0) > 0;
                 const pdfName = getPdfName(deck.pdfId || null);
@@ -132,19 +132,19 @@ export default function StudyDeckSelector({ isOpen, onClose, onSelectDeck }: Stu
                     key={deck.id}
                     onClick={() => handleSelectDeck(deck)}
                     disabled={!hasDueCards}
-                    className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 ${
+                    className={`w-full text-left p-4 rounded-xl border transition-all duration-200 ${
                       hasDueCards
-                        ? 'bg-white dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 hover:border-primary-400 dark:hover:border-primary-500 hover:shadow-lg hover:shadow-primary-500/10 cursor-pointer transform hover:scale-[1.01]'
-                        : 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-700 opacity-60 cursor-not-allowed'
+                        ? 'bg-white dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 hover:border-primary-300 dark:hover:border-primary-500 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
+                        : 'bg-gray-50 dark:bg-gray-800/50 border-gray-100 dark:border-gray-700 opacity-50 cursor-not-allowed'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
                           {deck.name}
                         </h3>
                         {pdfName && (
-                          <p className="text-xs text-primary-600 dark:text-primary-400 mt-0.5 truncate flex items-center gap-1">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate flex items-center gap-1">
                             <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                             </svg>
@@ -156,7 +156,7 @@ export default function StudyDeckSelector({ isOpen, onClose, onSelectDeck }: Stu
                             {deck.cardCount || 0} Karten
                           </span>
                           {hasDueCards ? (
-                            <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400 font-medium">
+                            <span className="flex items-center gap-1 text-primary-600 dark:text-primary-400 font-medium">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
@@ -172,9 +172,9 @@ export default function StudyDeckSelector({ isOpen, onClose, onSelectDeck }: Stu
 
                       {hasDueCards && (
                         <div className="flex-shrink-0">
-                          <div className="w-10 h-10 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/20">
-                            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                          <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900/40 rounded-lg flex items-center justify-center">
+                            <svg className="w-4 h-4 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
                           </div>
                         </div>

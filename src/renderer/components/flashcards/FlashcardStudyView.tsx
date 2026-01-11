@@ -3,6 +3,14 @@ import { useAppStore } from '../../stores/appStore';
 import type { FSRSRating } from '../../../shared/types';
 import confetti from 'canvas-confetti';
 
+// Feedback messages for each rating
+const FEEDBACK_MESSAGES: Record<FSRSRating, string[]> = {
+  1: ['Kein Problem!', 'Weiter so!', 'Du schaffst das!'],
+  2: ['Gut gekampft!', 'Dranbleiben!', 'Fast!'],
+  3: ['Super!', 'Gut gemacht!', 'Richtig!'],
+  4: ['Perfekt!', 'Klasse!', 'Ausgezeichnet!', 'Genial!'],
+};
+
 interface FlashcardStudyViewProps {
   onComplete: () => void;
   onBack: () => void;
@@ -22,8 +30,10 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reviewedCount, setReviewedCount] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [easyStreak, setEasyStreak] = useState(0);
   const [showCardAnimation, setShowCardAnimation] = useState(false);
   const [lastRating, setLastRating] = useState<FSRSRating | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Initialize first card
@@ -71,6 +81,18 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
     }, 250);
   }, []);
 
+  // Trigger mini confetti for easy streak
+  const triggerMiniConfetti = useCallback((streakCount: number) => {
+    const particleCount = Math.min(30 + streakCount * 10, 100);
+    confetti({
+      particleCount,
+      spread: 60,
+      origin: { y: 0.7 },
+      colors: ['#3b82f6', '#22c55e', '#eab308', '#a855f7'],
+      zIndex: 9999,
+    });
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -107,6 +129,13 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
     try {
       setIsSubmitting(true);
       setLastRating(rating);
+
+      // Show feedback message
+      const messages = FEEDBACK_MESSAGES[rating];
+      const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+      setFeedbackMessage(randomMessage);
+      setTimeout(() => setFeedbackMessage(null), 1200);
+
       await window.electronAPI.submitFlashcardReview(currentStudyCard.id, rating);
       setReviewedCount(prev => prev + 1);
 
@@ -115,6 +144,17 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
         setStreak(prev => prev + 1);
       } else {
         setStreak(0);
+      }
+
+      // Track easy streak and trigger confetti
+      if (rating === 4) {
+        const newEasyStreak = easyStreak + 1;
+        setEasyStreak(newEasyStreak);
+        if (newEasyStreak >= 3) {
+          triggerMiniConfetti(newEasyStreak);
+        }
+      } else {
+        setEasyStreak(0);
       }
 
       // Move to next card
@@ -403,7 +443,15 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
 
       {/* Rating Buttons */}
       {isFlipped && (
-        <div className="p-5 bg-gradient-to-t from-white via-white/95 to-white/80 dark:from-gray-800 dark:via-gray-800/95 dark:to-gray-800/80 backdrop-blur-sm border-t border-gray-200/50 dark:border-gray-700/50">
+        <div className="relative p-5 bg-gradient-to-t from-white via-white/95 to-white/80 dark:from-gray-800 dark:via-gray-800/95 dark:to-gray-800/80 backdrop-blur-sm border-t border-gray-200/50 dark:border-gray-700/50">
+          {/* Feedback Toast */}
+          {feedbackMessage && (
+            <div className="absolute -top-14 left-1/2 -translate-x-1/2 z-50 animate-feedback-toast">
+              <div className="px-6 py-2.5 bg-white dark:bg-gray-700 rounded-full shadow-lg border border-gray-200 dark:border-gray-600 text-lg font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">
+                {feedbackMessage}
+              </div>
+            </div>
+          )}
           <div className="max-w-2xl mx-auto">
             <div className="text-sm text-center text-gray-600 dark:text-gray-400 mb-4 font-medium">
               Wie gut wusstest du die Antwort?
@@ -468,6 +516,27 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
         }
         .animate-card-enter {
           animation: card-enter 0.3s ease-out;
+        }
+        @keyframes feedback-toast {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, 10px) scale(0.9);
+          }
+          15% {
+            opacity: 1;
+            transform: translate(-50%, 0) scale(1);
+          }
+          85% {
+            opacity: 1;
+            transform: translate(-50%, 0) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -10px) scale(0.9);
+          }
+        }
+        .animate-feedback-toast {
+          animation: feedback-toast 1.2s ease-out forwards;
         }
         .duration-600 {
           transition-duration: 600ms;
