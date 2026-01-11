@@ -34,15 +34,39 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
   const [showCardAnimation, setShowCardAnimation] = useState(false);
   const [lastRating, setLastRating] = useState<FSRSRating | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [isSessionComplete, setIsSessionComplete] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const previousDeckCardsRef = useRef<number[]>([]);
 
-  // Initialize first card
+  // Initialize first card or reset on deck change
   useEffect(() => {
-    if (dueFlashcards.length > 0 && !currentStudyCard) {
+    // Get current card IDs to detect deck change
+    const currentCardIds = dueFlashcards.map(c => c.id);
+    const previousCardIds = previousDeckCardsRef.current;
+
+    // Check if deck has changed (different cards)
+    const deckChanged = currentCardIds.length > 0 &&
+      (previousCardIds.length === 0 ||
+       currentCardIds[0] !== previousCardIds[0] ||
+       currentCardIds.length !== previousCardIds.length);
+
+    if (deckChanged) {
+      // Deck changed - reset everything and start fresh
+      previousDeckCardsRef.current = currentCardIds;
+      setIsSessionComplete(false);
+      setReviewedCount(0);
+      setStreak(0);
+      setEasyStreak(0);
+      setIsFlipped(false);
+      setCurrentStudyCard(dueFlashcards[0]);
+      setStudyCardIndex(0);
+    } else if (dueFlashcards.length > 0 && !currentStudyCard && !isSessionComplete) {
+      // Initial load - set first card only if session not complete
+      previousDeckCardsRef.current = currentCardIds;
       setCurrentStudyCard(dueFlashcards[0]);
       setStudyCardIndex(0);
     }
-  }, [dueFlashcards, currentStudyCard]);
+  }, [dueFlashcards, currentStudyCard, isSessionComplete]);
 
   // Card entrance animation
   useEffect(() => {
@@ -165,8 +189,9 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
         setIsFlipped(false);
         setLastRating(null);
       } else {
-        // Session complete - trigger confetti
+        // Session complete - trigger confetti and show completion screen
         triggerConfetti();
+        setIsSessionComplete(true);
         setCurrentStudyCard(null);
         setStudyCardIndex(0);
       }
@@ -205,7 +230,7 @@ export default function FlashcardStudyView({ onComplete, onBack }: FlashcardStud
     return '#22c55e'; // green
   };
 
-  if (!currentStudyCard) {
+  if (isSessionComplete || !currentStudyCard) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-emerald-950/30 overflow-hidden relative">
         {/* Animated background circles */}
