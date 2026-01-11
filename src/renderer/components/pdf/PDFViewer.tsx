@@ -8,6 +8,7 @@ import TableOfContents from './TableOfContents';
 import HighlightToolbar from './HighlightToolbar';
 import HighlightsSidebar from './HighlightsSidebar';
 import ExportModal from '../export/ExportModal';
+import SearchBar from './SearchBar';
 import type { Highlight, HighlightRect, PDFDocument } from '../../../shared/types';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -16,7 +17,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export default function PDFViewer() {
-  const { currentPdf, currentPage, setCurrentPage, searchQuery } = useAppStore();
+  const { currentPdf, currentPage, setCurrentPage, searchQuery, presentationMode, setPresentationMode } = useAppStore();
   const [numPages, setNumPages] = useState<number>(0);
   const [scale, setScale] = useState(1.2);
   const [loading, setLoading] = useState(true);
@@ -26,7 +27,17 @@ export default function PDFViewer() {
   const [showHighlightsSidebar, setShowHighlightsSidebar] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [pdfData, setPdfData] = useState<string | null>(null);
+  const [showLaserPointer, setShowLaserPointer] = useState(false);
+  const [laserPosition, setLaserPosition] = useState({ x: 0, y: 0 });
   const [highlights, setHighlights] = useState<Highlight[]>([]);
+
+  // In-PDF Search state
+  const [showSearchBar, setShowSearchBar] = useState(false);
+  const [pdfSearchQuery, setPdfSearchQuery] = useState('');
+  const [searchMatches, setSearchMatches] = useState<Array<{ pageNum: number; matchIndex: number }>>([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [isSearchingPdf, setIsSearchingPdf] = useState(false);
+  const pdfDocRef = useRef<any>(null);
   const [selectionData, setSelectionData] = useState<{
     text: string;
     rects: HighlightRect[];
@@ -228,9 +239,11 @@ export default function PDFViewer() {
     setSelectionData(null);
   }, [selectionData, currentPdf, currentPage, highlights, rectsOverlap, mergeOverlappingRects]);
 
-  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
-    setNumPages(numPages);
+  const onDocumentLoadSuccess = (pdf: any) => {
+    setNumPages(pdf.numPages);
     setLoading(false);
+    // Store PDF document reference for search functionality
+    pdfDocRef.current = pdf;
   };
 
   const goToPage = useCallback((page: number) => {
@@ -238,6 +251,118 @@ export default function PDFViewer() {
       setCurrentPage(page);
     }
   }, [numPages, setCurrentPage]);
+
+  // Presentation Mode functions
+  const enterPresentationMode = useCallback(() => {
+    document.documentElement.requestFullscreen().then(() => {
+      setPresentationMode(true);
+    }).catch((err) => {
+      console.error('Failed to enter fullscreen:', err);
+    });
+  }, [setPresentationMode]);
+
+  const exitPresentationMode = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+    setPresentationMode(false);
+    setShowLaserPointer(false);
+  }, [setPresentationMode]);
+
+  // Handle fullscreen change (ESC key exits fullscreen)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && presentationMode) {
+        setPresentationMode(false);
+        setShowLaserPointer(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [presentationMode, setPresentationMode]);
+
+  // Track mouse position for laser pointer
+  useEffect(() => {
+    if (!presentationMode || !showLaserPointer) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      setLaserPosition({ x: e.clientX, y: e.clientY });
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    return () => document.removeEventListener('mousemove', handleMouseMove);
+  }, [presentationMode, showLaserPointer]);
+
+  // Search all pages for matches
+  const searchAllPages = useCallback(async (query: string) => {
+    if (!query.trim() || !pdfDocRef.current) {
+      setSearchMatches([]);
+      setCurrentMatchIndex(0);
+      return;
+    }
+
+    setIsSearchingPdf(true);
+    const matches: Array<{ pageNum: number; matchIndex: number }> = [];
+    const searchLower = query.toLowerCase();
+
+    try {
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdfDocRef.current.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(' ').toLowerCase();
+
+        let idx = 0;
+        let matchOnPage = 0;
+        while ((idx = pageText.indexOf(searchLower, idx)) !== -1) {
+          matches.push({ pageNum, matchIndex: matchOnPage });
+          idx++;
+          matchOnPage++;
+        }
+      }
+    } catch (err) {
+      console.error('Search error:', err);
+    }
+
+    setSearchMatches(matches);
+    setCurrentMatchIndex(0);
+    setIsSearchingPdf(false);
+
+    // Navigate to first match
+    if (matches.length > 0 && matches[0].pageNum !== currentPage) {
+      goToPage(matches[0].pageNum);
+    }
+  }, [numPages, currentPage, goToPage]);
+
+  // Debounced search
+  useEffect(() => {
+    if (!showSearchBar) return;
+    const timer = setTimeout(() => {
+      searchAllPages(pdfSearchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [pdfSearchQuery, showSearchBar, searchAllPages]);
+
+  // Navigate to next/previous match
+  const goToNextMatch = useCallback(() => {
+    if (searchMatches.length === 0) return;
+    const nextIndex = (currentMatchIndex + 1) % searchMatches.length;
+    setCurrentMatchIndex(nextIndex);
+    const match = searchMatches[nextIndex];
+    if (match.pageNum !== currentPage) {
+      goToPage(match.pageNum);
+    }
+  }, [searchMatches, currentMatchIndex, currentPage, goToPage]);
+
+  const goToPrevMatch = useCallback(() => {
+    if (searchMatches.length === 0) return;
+    const prevIndex = currentMatchIndex === 0 ? searchMatches.length - 1 : currentMatchIndex - 1;
+    setCurrentMatchIndex(prevIndex);
+    const match = searchMatches[prevIndex];
+    if (match.pageNum !== currentPage) {
+      goToPage(match.pageNum);
+    }
+  }, [searchMatches, currentMatchIndex, currentPage, goToPage]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't handle if user is typing in an input
@@ -286,59 +411,106 @@ export default function PDFViewer() {
 
       // Sidebars
       case 'Escape':
-        if (showNotes) setShowNotes(false);
-        if (showThumbnails) setShowThumbnails(false);
-        if (showToc) setShowToc(false);
-        if (showHighlightsSidebar) setShowHighlightsSidebar(false);
+        if (presentationMode) {
+          exitPresentationMode();
+        } else {
+          if (showNotes) setShowNotes(false);
+          if (showThumbnails) setShowThumbnails(false);
+          if (showToc) setShowToc(false);
+          if (showHighlightsSidebar) setShowHighlightsSidebar(false);
+        }
         break;
       case 't':
-        if (!e.metaKey && !e.ctrlKey) {
+        if (!e.metaKey && !e.ctrlKey && !presentationMode) {
           setShowThumbnails((s) => !s);
         }
         break;
       case 'n':
-        if (!e.metaKey && !e.ctrlKey) {
+        if (!e.metaKey && !e.ctrlKey && !presentationMode) {
           setShowNotes((s) => !s);
         }
         break;
       case 'i':
-        if (!e.metaKey && !e.ctrlKey) {
+        if (!e.metaKey && !e.ctrlKey && !presentationMode) {
           setShowToc((s) => !s);
         }
         break;
       case 'h':
-        if (!e.metaKey && !e.ctrlKey) {
+        if (!e.metaKey && !e.ctrlKey && !presentationMode) {
           setShowHighlightsSidebar((s) => !s);
         }
         break;
-    }
-  }, [currentPage, numPages, goToPage, showNotes, showThumbnails, showToc, showHighlightsSidebar]);
 
-  // Highlight search terms in the text layer (optimized with early exit)
+      // Presentation Mode
+      case 'p':
+        if (!e.metaKey && !e.ctrlKey) {
+          e.preventDefault();
+          if (presentationMode) {
+            exitPresentationMode();
+          } else {
+            enterPresentationMode();
+          }
+        }
+        break;
+      case 'l':
+        if (presentationMode && !e.metaKey && !e.ctrlKey) {
+          e.preventDefault();
+          setShowLaserPointer((s) => !s);
+        }
+        break;
+
+      // Search
+      case 'f':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          setShowSearchBar(true);
+        }
+        break;
+    }
+  }, [currentPage, numPages, goToPage, showNotes, showThumbnails, showToc, showHighlightsSidebar, presentationMode, enterPresentationMode, exitPresentationMode]);
+
+  // Highlight search terms in the text layer (supports both global and PDF search)
   const highlightSearchTerms = useCallback(() => {
     if (!pageRef.current) return;
 
     const textLayer = pageRef.current.querySelector('.react-pdf__Page__textContent');
     if (!textLayer) return;
 
-    // If no search query, remove all highlights efficiently
-    if (!searchQuery) {
-      textLayer.querySelectorAll('.search-highlight').forEach((span) => {
-        span.classList.remove('search-highlight');
+    // Determine which search query to use
+    const activeQuery = pdfSearchQuery || searchQuery;
+
+    // If no search query, remove all highlights
+    if (!activeQuery) {
+      textLayer.querySelectorAll('.search-highlight, .search-highlight-current').forEach((span) => {
+        span.classList.remove('search-highlight', 'search-highlight-current');
       });
       return;
     }
 
     const spans = textLayer.querySelectorAll('span');
-    const searchTerms = searchQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    const searchTerms = activeQuery.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+
+    // Find current match info for this page
+    const currentMatch = searchMatches[currentMatchIndex];
+    const isCurrentPage = currentMatch?.pageNum === currentPage;
+    let matchCounter = 0;
 
     // Use a single loop with classList toggle for better performance
     spans.forEach((span) => {
       const text = span.textContent?.toLowerCase() || '';
       const hasMatch = searchTerms.some(term => text.includes(term));
-      span.classList.toggle('search-highlight', hasMatch);
+
+      // Check if this is the current match (for PDF search)
+      const isCurrentMatch = pdfSearchQuery && isCurrentPage && hasMatch && matchCounter === currentMatch?.matchIndex;
+
+      if (hasMatch) {
+        matchCounter++;
+      }
+
+      span.classList.toggle('search-highlight', hasMatch && !isCurrentMatch);
+      span.classList.toggle('search-highlight-current', isCurrentMatch);
     });
-  }, [searchQuery]);
+  }, [searchQuery, pdfSearchQuery, searchMatches, currentMatchIndex, currentPage]);
 
   // Keyboard handler - only active when PDF is loaded
   useEffect(() => {
@@ -379,6 +551,54 @@ export default function PDFViewer() {
     );
   }
 
+  // Presentation Mode UI
+  if (presentationMode) {
+    return (
+      <div className="fixed inset-0 bg-black z-50 flex flex-col">
+        {/* PDF Content - centered */}
+        <div className="flex-1 flex items-center justify-center overflow-hidden">
+          <div ref={pageRef}>
+            <Document file={pdfData} loading={null}>
+              <Page
+                pageNumber={currentPage}
+                scale={scale}
+                renderTextLayer={false}
+                renderAnnotationLayer={false}
+                className="shadow-2xl"
+              />
+            </Document>
+          </div>
+        </div>
+
+        {/* Bottom Overlay - Page Counter */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/60 rounded-full text-white text-sm font-medium backdrop-blur-sm">
+          {currentPage} / {numPages}
+        </div>
+
+        {/* Laser Pointer */}
+        {showLaserPointer && (
+          <div
+            className="fixed pointer-events-none z-[100]"
+            style={{
+              left: laserPosition.x - 6,
+              top: laserPosition.y - 6,
+              width: 12,
+              height: 12,
+              backgroundColor: 'red',
+              borderRadius: '50%',
+              boxShadow: '0 0 10px 4px rgba(255, 0, 0, 0.6)',
+            }}
+          />
+        )}
+
+        {/* Help hint - fades out */}
+        <div className="absolute top-4 right-4 text-white/40 text-xs">
+          ESC: Beenden | L: Laser | ←→: Seiten
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex">
       {/* Main PDF Area */}
@@ -397,6 +617,15 @@ export default function PDFViewer() {
             >
               <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </button>
+            <button
+              onClick={enterPresentationMode}
+              className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              title="Präsentationsmodus (p)"
+            >
+              <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
               </svg>
             </button>
           </div>
@@ -567,7 +796,23 @@ export default function PDFViewer() {
         </div>
 
         {/* PDF Content */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-4 relative">
+          {/* In-PDF Search Bar */}
+          <SearchBar
+            isOpen={showSearchBar}
+            onClose={() => {
+              setShowSearchBar(false);
+              setPdfSearchQuery('');
+              setSearchMatches([]);
+            }}
+            searchQuery={pdfSearchQuery}
+            onSearchChange={setPdfSearchQuery}
+            matches={searchMatches}
+            currentMatchIndex={currentMatchIndex}
+            isSearching={isSearchingPdf}
+            onNextMatch={goToNextMatch}
+            onPrevMatch={goToPrevMatch}
+          />
           <div className="flex justify-center" ref={pageRef}>
             <Document
               file={pdfData}

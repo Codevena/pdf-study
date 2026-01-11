@@ -60,6 +60,10 @@ interface AppState {
   setMobileSidebarOpen: (open: boolean) => void;
   mainContentView: 'pdf' | 'study';
   setMainContentView: (view: 'pdf' | 'study') => void;
+  presentationMode: boolean;
+  setPresentationMode: (mode: boolean) => void;
+  libraryViewMode: 'list' | 'grid';
+  setLibraryViewMode: (mode: 'list' | 'grid') => void;
   showStudyDeckSelector: boolean;
   setShowStudyDeckSelector: (show: boolean) => void;
   studyDeckId: number | null;
@@ -159,6 +163,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
   mainContentView: 'pdf',
   setMainContentView: (mainContentView) => set({ mainContentView }),
+  presentationMode: false,
+  setPresentationMode: (presentationMode) => set({ presentationMode }),
+  libraryViewMode: 'list',
+  setLibraryViewMode: (libraryViewMode) => set({ libraryViewMode }),
   showStudyDeckSelector: false,
   setShowStudyDeckSelector: (showStudyDeckSelector) => set({ showStudyDeckSelector }),
   studyDeckId: null,

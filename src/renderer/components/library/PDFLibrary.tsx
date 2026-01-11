@@ -8,7 +8,7 @@ import type { PDFDocument, Tag } from '../../../shared/types';
 const ITEM_HEIGHT = 90; // Height of each PDF item in pixels
 
 export default function PDFLibrary() {
-  const { pdfs, setCurrentPdf, currentPdf, setPdfs, setIndexingStatus } = useAppStore();
+  const { pdfs, setCurrentPdf, currentPdf, setPdfs, setIndexingStatus, libraryViewMode, setLibraryViewMode } = useAppStore();
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [pdfTagsMap, setPdfTagsMap] = useState<Map<number, Tag[]>>(new Map());
@@ -138,6 +138,66 @@ export default function PDFLibrary() {
     );
   }, [currentPdf, editingPdfId, pdfTagsMap, handlePdfClick]);
 
+  const renderGridItem = useCallback((pdf: PDFDocument) => {
+    const pdfTags = pdfTagsMap.get(pdf.id) || [];
+    const isSelected = currentPdf?.id === pdf.id;
+    const displayTags = pdfTags.slice(0, 2);
+    const extraTagCount = pdfTags.length - 2;
+
+    return (
+      <div
+        key={pdf.id}
+        onClick={() => handlePdfClick(pdf)}
+        className={`group relative p-2 rounded-lg cursor-pointer transition-all hover:bg-gray-100 dark:hover:bg-gray-700 ${
+          isSelected ? 'bg-primary-50 dark:bg-primary-900/30 ring-2 ring-primary-500' : ''
+        }`}
+      >
+        <div className="aspect-[3/4] mb-2 rounded overflow-hidden bg-gray-100 dark:bg-gray-700 shadow-sm group-hover:shadow-md transition-shadow">
+          <PDFThumbnail filePath={pdf.filePath} width={120} height={160} />
+        </div>
+        <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate" title={pdf.fileName}>
+          {pdf.fileName.replace('.pdf', '')}
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {pdf.pageCount} Seiten
+        </p>
+        {displayTags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1">
+            {displayTags.map((tag) => (
+              <span
+                key={tag.id}
+                className="px-1 py-0.5 text-[10px] rounded"
+                style={{
+                  backgroundColor: `${tag.color}20`,
+                  color: tag.color,
+                }}
+              >
+                {tag.name}
+              </span>
+            ))}
+            {extraTagCount > 0 && (
+              <span className="px-1 py-0.5 text-[10px] text-gray-400 dark:text-gray-500">
+                +{extraTagCount}
+              </span>
+            )}
+          </div>
+        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingPdfId(pdf.id);
+          }}
+          className="absolute top-2 right-2 p-1 bg-white dark:bg-gray-800 rounded shadow opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 dark:hover:bg-gray-700"
+          title="Tags bearbeiten"
+        >
+          <svg className="w-3 h-3 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+        </button>
+      </div>
+    );
+  }, [currentPdf, pdfTagsMap, handlePdfClick]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
@@ -161,6 +221,22 @@ export default function PDFLibrary() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
           Tags
+        </button>
+        <div className="flex-1" />
+        <button
+          onClick={() => setLibraryViewMode(libraryViewMode === 'list' ? 'grid' : 'list')}
+          className="p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+          title={libraryViewMode === 'list' ? 'Grid-Ansicht' : 'Listen-Ansicht'}
+        >
+          {libraryViewMode === 'list' ? (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+          )}
         </button>
       </div>
 
@@ -200,7 +276,7 @@ export default function PDFLibrary() {
         </div>
       )}
 
-      {/* PDF List with Virtual Scrolling */}
+      {/* PDF List/Grid */}
       <div ref={containerRef} className="flex-1 overflow-y-auto">
         {filteredPdfs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 p-4">
@@ -211,6 +287,10 @@ export default function PDFLibrary() {
               {selectedTagId ? 'Keine PDFs mit diesem Tag' : 'Keine PDFs gefunden'}
             </p>
             <p className="text-xs text-center mt-1">Klicke auf Aktualisieren</p>
+          </div>
+        ) : libraryViewMode === 'grid' ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2">
+            {filteredPdfs.map(pdf => renderGridItem(pdf))}
           </div>
         ) : (
           <div style={{ height: totalHeight, position: 'relative' }}>
