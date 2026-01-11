@@ -203,15 +203,21 @@ export async function initDatabase(): Promise<DatabaseInstance> {
 
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_pdfs_file_path ON pdfs(file_path);
+    CREATE INDEX IF NOT EXISTS idx_pdfs_file_name ON pdfs(file_name);
     CREATE INDEX IF NOT EXISTS idx_bookmarks_pdf ON bookmarks(pdf_id);
     CREATE INDEX IF NOT EXISTS idx_notes_pdf_page ON notes(pdf_id, page_num);
     CREATE INDEX IF NOT EXISTS idx_highlights_pdf_page ON highlights(pdf_id, page_num);
     CREATE INDEX IF NOT EXISTS idx_flashcards_deck ON flashcards(deck_id);
     CREATE INDEX IF NOT EXISTS idx_flashcard_fsrs_due ON flashcard_fsrs(due);
     CREATE INDEX IF NOT EXISTS idx_flashcard_fsrs_state ON flashcard_fsrs(state);
+    CREATE INDEX IF NOT EXISTS idx_flashcard_fsrs_flashcard ON flashcard_fsrs(flashcard_id);
     CREATE INDEX IF NOT EXISTS idx_flashcard_reviews_card ON flashcard_reviews(flashcard_id);
+    CREATE INDEX IF NOT EXISTS idx_flashcard_reviews_date ON flashcard_reviews(reviewed_at);
     CREATE INDEX IF NOT EXISTS idx_note_links_source ON note_links(source_note_id);
     CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links(target_pdf_id, target_page_num);
+    CREATE INDEX IF NOT EXISTS idx_pdf_tags_tag ON pdf_tags(tag_id);
+    CREATE INDEX IF NOT EXISTS idx_recent_views_pdf ON recent_views(pdf_id);
+    CREATE INDEX IF NOT EXISTS idx_api_usage_date ON api_usage(created_at);
   `);
 
   // Run migrations for existing databases

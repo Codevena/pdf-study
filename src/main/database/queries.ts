@@ -394,10 +394,15 @@ interface HighlightRow {
 }
 
 function parseHighlightRow(row: HighlightRow): Highlight {
-  return {
-    ...row,
-    rects: row.rects ? JSON.parse(row.rects) : [],
-  };
+  let rects: Highlight['rects'] = [];
+  if (row.rects) {
+    try {
+      rects = JSON.parse(row.rects);
+    } catch {
+      console.warn(`Failed to parse highlight rects for id ${row.id}`);
+    }
+  }
+  return { ...row, rects };
 }
 
 export function getHighlights(db: DatabaseInstance, pdfId: number, pageNum?: number): Highlight[] {
@@ -558,4 +563,92 @@ export function getApiUsageStats(db: DatabaseInstance): ApiUsageStats {
 
 export function clearApiUsage(db: DatabaseInstance): void {
   db.prepare('DELETE FROM api_usage').run();
+}
+
+// =============================================================================
+// Batch Queries for Export (Prevent N+1)
+// =============================================================================
+
+/**
+ * Get all bookmarks grouped by PDF ID.
+ * Single query instead of N queries for N PDFs.
+ */
+export function getAllBookmarksGrouped(db: DatabaseInstance): Map<number, Bookmark[]> {
+  const rows = db.prepare(`
+    SELECT id, pdf_id as pdfId, page_num as pageNum, title, created_at as createdAt
+    FROM bookmarks
+    ORDER BY pdf_id, created_at DESC
+  `).all() as Bookmark[];
+
+  const grouped = new Map<number, Bookmark[]>();
+  for (const row of rows) {
+    const existing = grouped.get(row.pdfId) || [];
+    existing.push(row);
+    grouped.set(row.pdfId, existing);
+  }
+  return grouped;
+}
+
+/**
+ * Get all notes grouped by PDF ID.
+ * Single query instead of N queries for N PDFs.
+ */
+export function getAllNotesGrouped(db: DatabaseInstance): Map<number, Note[]> {
+  const rows = db.prepare(`
+    SELECT id, pdf_id as pdfId, page_num as pageNum, content,
+           position_x as positionX, position_y as positionY,
+           created_at as createdAt, updated_at as updatedAt
+    FROM notes
+    ORDER BY pdf_id, page_num, created_at
+  `).all() as Note[];
+
+  const grouped = new Map<number, Note[]>();
+  for (const row of rows) {
+    const existing = grouped.get(row.pdfId) || [];
+    existing.push(row);
+    grouped.set(row.pdfId, existing);
+  }
+  return grouped;
+}
+
+/**
+ * Get all highlights grouped by PDF ID.
+ * Single query instead of N queries for N PDFs.
+ */
+export function getAllHighlightsGrouped(db: DatabaseInstance): Map<number, Highlight[]> {
+  const rows = db.prepare(`
+    SELECT id, pdf_id as pdfId, page_num as pageNum, color, text_content as textContent,
+           rects, created_at as createdAt
+    FROM highlights
+    ORDER BY pdf_id, page_num, created_at
+  `).all() as HighlightRow[];
+
+  const grouped = new Map<number, Highlight[]>();
+  for (const row of rows) {
+    const highlight = parseHighlightRow(row);
+    const existing = grouped.get(highlight.pdfId) || [];
+    existing.push(highlight);
+    grouped.set(highlight.pdfId, existing);
+  }
+  return grouped;
+}
+
+export interface BatchExportData {
+  bookmarksByPdf: Map<number, Bookmark[]>;
+  notesByPdf: Map<number, Note[]>;
+  highlightsByPdf: Map<number, Highlight[]>;
+  tagsByPdf: Record<number, Tag[]>;
+}
+
+/**
+ * Fetch all export data in 4 queries instead of 4*N queries.
+ * For 100 PDFs, this reduces queries from 400 to 4.
+ */
+export function getBatchExportData(db: DatabaseInstance): BatchExportData {
+  return {
+    bookmarksByPdf: getAllBookmarksGrouped(db),
+    notesByPdf: getAllNotesGrouped(db),
+    highlightsByPdf: getAllHighlightsGrouped(db),
+    tagsByPdf: getAllPdfTagsMap(db),
+  };
 }

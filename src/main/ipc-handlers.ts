@@ -13,7 +13,21 @@ import { startFileWatcher } from './file-watcher';
 import { generateMarkdown, generateMarkdownEnhanced } from './export/markdown';
 import { parseWikiLinks, resolveLink } from './links/parser';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { AppSettings, IndexingStatus, OCRStatus, HighlightRect, FSRSRating, OpenAIModel, GeneratedCard, ExportOptions } from '../shared/types';
+import type { AppSettings, IndexingStatus, OCRStatus, HighlightRect, FSRSRating, OpenAIModel, GeneratedCard, ExportOptions, SearchResult } from '../shared/types';
+
+/**
+ * Safely parse JSON with a fallback value.
+ * Prevents crashes from malformed JSON in database or external sources.
+ */
+function safeJsonParse<T>(json: string | null | undefined, fallback: T): T {
+  if (!json) return fallback;
+  try {
+    return JSON.parse(json) as T;
+  } catch (error) {
+    console.warn('Failed to parse JSON, using fallback:', error);
+    return fallback;
+  }
+}
 
 let indexingStatus: IndexingStatus = {
   isIndexing: false,
@@ -35,28 +49,47 @@ let ocrStatus: OCRStatus = {
 
 let ocrCancelled = false;
 
-// Simple LRU cache for search results (performance optimization)
-const searchCache = new Map<string, { results: any[]; timestamp: number }>();
+// LRU cache for search results (performance optimization)
+// Uses Map's insertion order + delete/re-insert pattern for true LRU behavior
+const searchCache = new Map<string, { results: SearchResult[]; timestamp: number }>();
 const SEARCH_CACHE_MAX_SIZE = 50;
 const SEARCH_CACHE_TTL = 60000; // 1 minute
 
-function getCachedSearchResults(cacheKey: string): any[] | null {
+function getCachedSearchResults(cacheKey: string): SearchResult[] | null {
   const cached = searchCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_TTL) {
-    return cached.results;
+  if (!cached) {
+    return null;
   }
-  if (cached) {
+
+  // Check TTL
+  if (Date.now() - cached.timestamp >= SEARCH_CACHE_TTL) {
     searchCache.delete(cacheKey);
+    return null;
   }
-  return null;
+
+  // LRU: Move to end by deleting and re-inserting (Map maintains insertion order)
+  searchCache.delete(cacheKey);
+  searchCache.set(cacheKey, cached);
+
+  return cached.results;
 }
 
-function setCachedSearchResults(cacheKey: string, results: any[]): void {
-  // Evict oldest entries if cache is full
-  if (searchCache.size >= SEARCH_CACHE_MAX_SIZE) {
-    const oldestKey = searchCache.keys().next().value;
-    if (oldestKey) searchCache.delete(oldestKey);
+function setCachedSearchResults(cacheKey: string, results: SearchResult[]): void {
+  // If key already exists, delete first to update position
+  if (searchCache.has(cacheKey)) {
+    searchCache.delete(cacheKey);
   }
+
+  // Evict oldest entries (first in Map) if cache is full
+  while (searchCache.size >= SEARCH_CACHE_MAX_SIZE) {
+    const oldestKey = searchCache.keys().next().value;
+    if (oldestKey) {
+      searchCache.delete(oldestKey);
+    } else {
+      break;
+    }
+  }
+
   searchCache.set(cacheKey, { results, timestamp: Date.now() });
 }
 
@@ -87,7 +120,7 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
       pdfFolder: queries.getSetting(db, 'pdfFolder'),
       theme: (queries.getSetting(db, 'theme') as 'light' | 'dark') || 'light',
       ocrEnabled: queries.getSetting(db, 'ocrEnabled') === 'true',
-      ocrLanguages: JSON.parse(queries.getSetting(db, 'ocrLanguages') || '["deu", "eng"]'),
+      ocrLanguages: safeJsonParse(queries.getSetting(db, 'ocrLanguages'), ['deu', 'eng']),
       searchLimit: parseInt(queries.getSetting(db, 'searchLimit') || '100', 10),
       searchMode: (queries.getSetting(db, 'searchMode') as 'exact' | 'fuzzy' | 'intelligent') || 'intelligent',
       // OpenAI Settings
@@ -541,7 +574,7 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
     }
   });
 
-  // Batch Export All PDFs
+  // Batch Export All PDFs - Optimized with batch queries (4 queries instead of 4*N)
   ipcMain.handle(IPC_CHANNELS.EXPORT_ALL_PDFS, async (_, options: ExportOptions) => {
     const allPdfs = queries.getAllPdfs(db);
 
@@ -564,12 +597,16 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
     let failedCount = 0;
     const errors: string[] = [];
 
+    // Fetch all data in 4 batch queries instead of 4*N queries
+    const batchData = queries.getBatchExportData(db);
+
     for (const pdf of allPdfs) {
       try {
-        const bookmarks = queries.getBookmarks(db, pdf.id);
-        const notes = queries.getNotes(db, pdf.id);
-        const highlights = queries.getHighlights(db, pdf.id);
-        const tags = queries.getPdfTags(db, pdf.id);
+        // Get data from pre-fetched maps (O(1) lookup)
+        const bookmarks = batchData.bookmarksByPdf.get(pdf.id) || [];
+        const notes = batchData.notesByPdf.get(pdf.id) || [];
+        const highlights = batchData.highlightsByPdf.get(pdf.id) || [];
+        const tags = batchData.tagsByPdf[pdf.id] || [];
 
         const markdown = generateMarkdownEnhanced(pdf, bookmarks, notes, highlights, tags, options, allPdfs);
         const fileName = pdf.fileName.replace(/\.pdf$/i, '.md');
@@ -681,7 +718,7 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   ipcMain.handle(IPC_CHANNELS.START_OCR_FOR_PDF, async (_, pdfId: number) => {
     const settings = {
       ocrEnabled: queries.getSetting(db, 'ocrEnabled') === 'true',
-      ocrLanguages: JSON.parse(queries.getSetting(db, 'ocrLanguages') || '["deu", "eng"]'),
+      ocrLanguages: safeJsonParse(queries.getSetting(db, 'ocrLanguages'), ['deu', 'eng']),
     };
 
     if (!settings.ocrEnabled) {
@@ -706,7 +743,7 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   ipcMain.handle(IPC_CHANNELS.FORCE_OCR, async () => {
     const settings = {
       ocrEnabled: queries.getSetting(db, 'ocrEnabled') === 'true',
-      ocrLanguages: JSON.parse(queries.getSetting(db, 'ocrLanguages') || '["deu", "eng"]'),
+      ocrLanguages: safeJsonParse(queries.getSetting(db, 'ocrLanguages'), ['deu', 'eng']),
     };
 
     if (!settings.ocrEnabled) {
@@ -735,7 +772,7 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   ipcMain.handle(IPC_CHANNELS.START_OCR, async () => {
     const settings = {
       ocrEnabled: queries.getSetting(db, 'ocrEnabled') === 'true',
-      ocrLanguages: JSON.parse(queries.getSetting(db, 'ocrLanguages') || '["deu", "eng"]'),
+      ocrLanguages: safeJsonParse(queries.getSetting(db, 'ocrLanguages'), ['deu', 'eng']),
     };
 
     if (!settings.ocrEnabled) {

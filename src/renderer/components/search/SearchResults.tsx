@@ -1,6 +1,44 @@
 import { useAppStore } from '../../stores/appStore';
 import type { SearchResult } from '../../../shared/types';
 
+/**
+ * Safely render search snippet with only <mark> tags allowed.
+ * Prevents XSS by escaping all HTML except the safe highlight markers.
+ */
+function SafeSnippet({ html }: { html: string }) {
+  // Split by <mark> and </mark> tags, keeping the delimiters
+  const parts = html.split(/(<mark>|<\/mark>)/gi);
+
+  let isHighlighted = false;
+  const elements: React.ReactNode[] = [];
+
+  parts.forEach((part, index) => {
+    if (part.toLowerCase() === '<mark>') {
+      isHighlighted = true;
+    } else if (part.toLowerCase() === '</mark>') {
+      isHighlighted = false;
+    } else if (part) {
+      // Escape any remaining HTML entities for safety
+      const textContent = part
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      if (isHighlighted) {
+        elements.push(
+          <mark key={index} className="bg-yellow-200 dark:bg-yellow-800 text-inherit rounded px-0.5">
+            {textContent}
+          </mark>
+        );
+      } else {
+        elements.push(textContent);
+      }
+    }
+  });
+
+  return <>{elements}</>;
+}
+
 export default function SearchResults() {
   const { searchResults, searchQuery, isSearching, setCurrentPdf, setCurrentPage, pdfs } = useAppStore();
 
@@ -72,10 +110,9 @@ export default function SearchResults() {
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                     {result.fileName}
                   </p>
-                  <p
-                    className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2"
-                    dangerouslySetInnerHTML={{ __html: result.snippet }}
-                  />
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+                    <SafeSnippet html={result.snippet} />
+                  </p>
                 </div>
               </div>
             </button>
