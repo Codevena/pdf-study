@@ -3,15 +3,17 @@ import path from 'path';
 import fs from 'fs/promises';
 import type { DatabaseInstance } from './database';
 import * as queries from './database/queries';
+import * as linkQueries from './database/link-queries';
 import * as flashcardQueries from './flashcards/queries';
 import { dbToFsrsCard, fsrsCardToDb, getNextReview, getNextIntervals } from './flashcards/fsrs';
 import { generateFlashcards, generateOutlineFromText } from './flashcards/ai-generator';
 import { extractTextFromPDF, extractTextFromPages, computeFileHash, findPDFsInFolder, extractOutline } from './pdf/extractor';
 import { pageNeedsOCR, processPageOCR, terminateWorker, clearPdfCache } from './pdf/ocr';
 import { startFileWatcher } from './file-watcher';
-import { generateMarkdown } from './export/markdown';
+import { generateMarkdown, generateMarkdownEnhanced } from './export/markdown';
+import { parseWikiLinks, resolveLink } from './links/parser';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { AppSettings, IndexingStatus, OCRStatus, HighlightRect, FSRSRating, OpenAIModel, GeneratedCard } from '../shared/types';
+import type { AppSettings, IndexingStatus, OCRStatus, HighlightRect, FSRSRating, OpenAIModel, GeneratedCard, ExportOptions } from '../shared/types';
 
 let indexingStatus: IndexingStatus = {
   isIndexing: false,
@@ -347,15 +349,50 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   });
 
   ipcMain.handle(IPC_CHANNELS.ADD_NOTE, (_, pdfId: number, pageNum: number, content: string) => {
-    return queries.addNote(db, pdfId, pageNum, content);
+    const noteId = queries.addNote(db, pdfId, pageNum, content);
+
+    // Index any wiki-links in the note
+    const allPdfs = queries.getAllPdfs(db);
+    const parsedLinks = parseWikiLinks(content);
+    if (parsedLinks.length > 0) {
+      const links = parsedLinks.map(link => {
+        const resolved = resolveLink(link, allPdfs);
+        return {
+          targetPdfId: resolved?.pdfId || null,
+          targetPageNum: resolved?.pageNum || null,
+          linkText: link.fullMatch,
+        };
+      });
+      linkQueries.indexNoteLinks(db, noteId, pdfId, pageNum, links);
+    }
+
+    return noteId;
   });
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_NOTE, (_, id: number, content: string) => {
     queries.updateNote(db, id, content);
+
+    // Re-index links for this note
+    const note = queries.getNoteById(db, id);
+    if (note) {
+      const allPdfs = queries.getAllPdfs(db);
+      const parsedLinks = parseWikiLinks(content);
+      const links = parsedLinks.map(link => {
+        const resolved = resolveLink(link, allPdfs);
+        return {
+          targetPdfId: resolved?.pdfId || null,
+          targetPageNum: resolved?.pageNum || null,
+          linkText: link.fullMatch,
+        };
+      });
+      linkQueries.indexNoteLinks(db, id, note.pdfId, note.pageNum, links);
+    }
+
     return true;
   });
 
   ipcMain.handle(IPC_CHANNELS.DELETE_NOTE, (_, id: number) => {
+    linkQueries.deleteNoteLinks(db, id);
     queries.deleteNote(db, id);
     return true;
   });
@@ -463,6 +500,137 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
       console.error('Export error:', error);
       return { success: false, error: 'Fehler beim Speichern' };
     }
+  });
+
+  // Enhanced Export with Options
+  ipcMain.handle(IPC_CHANNELS.EXPORT_PDF_DATA_ENHANCED, async (_, pdfId: number, options: ExportOptions) => {
+    const pdf = queries.getPdfById(db, pdfId);
+    if (!pdf) {
+      return { success: false, error: 'PDF nicht gefunden' };
+    }
+
+    const bookmarks = queries.getBookmarks(db, pdfId);
+    const notes = queries.getNotes(db, pdfId);
+    const tags = queries.getPdfTags(db, pdfId);
+    const highlights = queries.getHighlights(db, pdfId);
+    const allPdfs = queries.getAllPdfs(db);
+
+    const markdown = generateMarkdownEnhanced(pdf, bookmarks, notes, highlights, tags, options, allPdfs);
+
+    // Show save dialog
+    const defaultFileName = pdf.fileName.replace(/\.pdf$/i, '.md');
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: options.format === 'obsidian' ? 'Obsidian Export speichern' : 'Export speichern',
+      defaultPath: defaultFileName,
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Alle Dateien', extensions: ['*'] },
+      ],
+    });
+
+    if (result.canceled || !result.filePath) {
+      return { success: false, canceled: true };
+    }
+
+    try {
+      await fs.writeFile(result.filePath, markdown, 'utf-8');
+      return { success: true, filePath: result.filePath };
+    } catch (error) {
+      console.error('Enhanced export error:', error);
+      return { success: false, error: 'Fehler beim Speichern' };
+    }
+  });
+
+  // Batch Export All PDFs
+  ipcMain.handle(IPC_CHANNELS.EXPORT_ALL_PDFS, async (_, options: ExportOptions) => {
+    const allPdfs = queries.getAllPdfs(db);
+
+    if (allPdfs.length === 0) {
+      return { success: false, error: 'Keine PDFs zum Exportieren vorhanden' };
+    }
+
+    // Show folder selection dialog
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory', 'createDirectory'],
+      title: options.format === 'obsidian' ? 'Obsidian Vault auswählen' : 'Export-Ordner auswählen',
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+
+    const outputFolder = result.filePaths[0];
+    let exportedCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
+
+    for (const pdf of allPdfs) {
+      try {
+        const bookmarks = queries.getBookmarks(db, pdf.id);
+        const notes = queries.getNotes(db, pdf.id);
+        const highlights = queries.getHighlights(db, pdf.id);
+        const tags = queries.getPdfTags(db, pdf.id);
+
+        const markdown = generateMarkdownEnhanced(pdf, bookmarks, notes, highlights, tags, options, allPdfs);
+        const fileName = pdf.fileName.replace(/\.pdf$/i, '.md');
+        await fs.writeFile(path.join(outputFolder, fileName), markdown, 'utf-8');
+        exportedCount++;
+      } catch (error: any) {
+        failedCount++;
+        errors.push(`${pdf.fileName}: ${error.message || 'Unbekannter Fehler'}`);
+      }
+    }
+
+    return { success: true, exportedCount, failedCount, outputFolder, errors };
+  });
+
+  // Smart Links Handlers
+  ipcMain.handle(IPC_CHANNELS.GET_LINK_SUGGESTIONS, (_, searchTerm: string) => {
+    const allPdfs = queries.getAllPdfs(db);
+    const term = searchTerm.toLowerCase();
+
+    return allPdfs
+      .filter(pdf => pdf.fileName.toLowerCase().includes(term))
+      .slice(0, 10)
+      .map(pdf => ({
+        pdfId: pdf.id,
+        fileName: pdf.fileName,
+        pageCount: pdf.pageCount,
+      }));
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_BACKLINKS, (_, pdfId: number, pageNum?: number) => {
+    return linkQueries.getBacklinks(db, pdfId, pageNum);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.RESOLVE_LINK, (_, linkText: string) => {
+    const allPdfs = queries.getAllPdfs(db);
+    const parsedLinks = parseWikiLinks(linkText);
+
+    if (parsedLinks.length === 0) {
+      return null;
+    }
+
+    const parsed = parsedLinks[0];
+    const resolved = resolveLink(parsed, allPdfs);
+
+    if (!resolved) {
+      return null;
+    }
+
+    const pdf = queries.getPdfById(db, resolved.pdfId);
+    if (!pdf) {
+      return null;
+    }
+
+    return {
+      pdf,
+      pageNum: resolved.pageNum || 1,
+    };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_LINK_GRAPH, (_, includeUnlinked: boolean = false) => {
+    return linkQueries.getLinkGraph(db, includeUnlinked);
   });
 
   // Highlight Handlers

@@ -1,12 +1,22 @@
+import { useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import PDFLibrary from '../library/PDFLibrary';
 import SearchResults from '../search/SearchResults';
 import BookmarkList from '../bookmarks/BookmarkList';
 import RecentViews from '../library/RecentViews';
 import FlashcardTab from '../flashcards/FlashcardTab';
+import LinkGraphModal from '../graph/LinkGraphModal';
 
 export default function Sidebar() {
-  const { sidebarView, setSidebarView, searchResults, pdfs, mobileSidebarOpen, setMobileSidebarOpen } = useAppStore();
+  const { sidebarView, setSidebarView, searchResults, pdfs, mobileSidebarOpen, setMobileSidebarOpen, setSelectedPdf } = useAppStore();
+  const [showGraph, setShowGraph] = useState(false);
+
+  const handleNavigateToPdf = (pdfId: number) => {
+    const pdf = pdfs.find((p) => p.id === pdfId);
+    if (pdf) {
+      setSelectedPdf(pdf);
+    }
+  };
 
   return (
     <>
@@ -130,7 +140,28 @@ export default function Sidebar() {
           <FlashcardTab />
         </div>
       </div>
+
+      {/* Graph Button */}
+      <div className="border-t border-gray-200 dark:border-gray-700 p-2">
+        <button
+          onClick={() => setShowGraph(true)}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+        >
+          <svg className="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          </svg>
+          <span>Wissensgraph</span>
+        </button>
+      </div>
       </aside>
+
+      {/* Graph Modal */}
+      {showGraph && (
+        <LinkGraphModal
+          onClose={() => setShowGraph(false)}
+          onNavigateToPdf={handleNavigateToPdf}
+        />
+      )}
     </>
   );
 }

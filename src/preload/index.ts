@@ -19,6 +19,13 @@ import type {
   FlashcardStats,
   FSRSRating,
   HeatmapData,
+  ExportOptions,
+  ExportResult,
+  BatchExportResult,
+  LinkSuggestion,
+  Backlink,
+  LinkResolution,
+  LinkGraph,
 } from '../shared/types';
 
 // Extended FlashcardWithFSRS with next intervals preview
@@ -142,6 +149,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Export
   exportPdfData: (pdfId: number): Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PDF_DATA, pdfId),
+
+  exportPdfDataEnhanced: (pdfId: number, options: ExportOptions): Promise<ExportResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPORT_PDF_DATA_ENHANCED, pdfId, options),
+
+  exportAllPdfs: (options: ExportOptions): Promise<BatchExportResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPORT_ALL_PDFS, options),
+
+  // Smart Links
+  getLinkSuggestions: (searchTerm: string): Promise<LinkSuggestion[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_LINK_SUGGESTIONS, searchTerm),
+
+  getBacklinks: (pdfId: number, pageNum?: number): Promise<Backlink[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_BACKLINKS, pdfId, pageNum),
+
+  resolveLink: (linkText: string): Promise<LinkResolution | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.RESOLVE_LINK, linkText),
+
+  getLinkGraph: (includeUnlinked?: boolean): Promise<LinkGraph> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_LINK_GRAPH, includeUnlinked || false),
 
   // Highlights
   getHighlights: (pdfId: number, pageNum?: number): Promise<Highlight[]> =>
@@ -378,6 +404,13 @@ declare global {
       getPdfTags: (pdfId: number) => Promise<Tag[]>;
       getAllPdfTags: () => Promise<Record<number, Tag[]>>;
       exportPdfData: (pdfId: number) => Promise<{ success: boolean; error?: string; canceled?: boolean; filePath?: string }>;
+      exportPdfDataEnhanced: (pdfId: number, options: ExportOptions) => Promise<ExportResult>;
+      exportAllPdfs: (options: ExportOptions) => Promise<BatchExportResult>;
+      // Smart Links
+      getLinkSuggestions: (searchTerm: string) => Promise<LinkSuggestion[]>;
+      getBacklinks: (pdfId: number, pageNum?: number) => Promise<Backlink[]>;
+      resolveLink: (linkText: string) => Promise<LinkResolution | null>;
+      getLinkGraph: (includeUnlinked?: boolean) => Promise<LinkGraph>;
       getHighlights: (pdfId: number, pageNum?: number) => Promise<Highlight[]>;
       addHighlight: (pdfId: number, pageNum: number, color: string, textContent: string, rects: HighlightRect[]) => Promise<number>;
       updateHighlightColor: (id: number, color: string) => Promise<boolean>;

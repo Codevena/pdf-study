@@ -189,6 +189,18 @@ export async function initDatabase(): Promise<DatabaseInstance> {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Note Links for Zettelkasten/Smart Links feature
+    CREATE TABLE IF NOT EXISTS note_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+      source_pdf_id INTEGER NOT NULL REFERENCES pdfs(id) ON DELETE CASCADE,
+      source_page_num INTEGER NOT NULL,
+      target_pdf_id INTEGER REFERENCES pdfs(id) ON DELETE CASCADE,
+      target_page_num INTEGER,
+      link_text TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_pdfs_file_path ON pdfs(file_path);
     CREATE INDEX IF NOT EXISTS idx_bookmarks_pdf ON bookmarks(pdf_id);
@@ -198,6 +210,8 @@ export async function initDatabase(): Promise<DatabaseInstance> {
     CREATE INDEX IF NOT EXISTS idx_flashcard_fsrs_due ON flashcard_fsrs(due);
     CREATE INDEX IF NOT EXISTS idx_flashcard_fsrs_state ON flashcard_fsrs(state);
     CREATE INDEX IF NOT EXISTS idx_flashcard_reviews_card ON flashcard_reviews(flashcard_id);
+    CREATE INDEX IF NOT EXISTS idx_note_links_source ON note_links(source_note_id);
+    CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links(target_pdf_id, target_page_num);
   `);
 
   // Run migrations for existing databases

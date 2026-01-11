@@ -7,7 +7,8 @@ import PageThumbnails from './PageThumbnails';
 import TableOfContents from './TableOfContents';
 import HighlightToolbar from './HighlightToolbar';
 import HighlightsSidebar from './HighlightsSidebar';
-import type { Highlight, HighlightRect } from '../../../shared/types';
+import ExportModal from '../export/ExportModal';
+import type { Highlight, HighlightRect, PDFDocument } from '../../../shared/types';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -23,6 +24,7 @@ export default function PDFViewer() {
   const [showThumbnails, setShowThumbnails] = useState(false);
   const [showToc, setShowToc] = useState(false);
   const [showHighlightsSidebar, setShowHighlightsSidebar] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [pdfData, setPdfData] = useState<string | null>(null);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [selectionData, setSelectionData] = useState<{
@@ -389,14 +391,7 @@ export default function PDFViewer() {
             </h2>
             <BookmarkButton pdfId={currentPdf.id} pageNum={currentPage} />
             <button
-              onClick={async () => {
-                const result = await window.electronAPI.exportPdfData(currentPdf.id);
-                if (result.success) {
-                  console.log('Exported to:', result.filePath);
-                } else if (result.error) {
-                  console.error('Export error:', result.error);
-                }
-              }}
+              onClick={() => setShowExportModal(true)}
               className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
               title="Als Markdown exportieren"
             >
@@ -655,6 +650,12 @@ export default function PDFViewer() {
           pdfId={currentPdf.id}
           pageNum={currentPage}
           onClose={() => setShowNotes(false)}
+          onNavigate={(pdf: PDFDocument, pageNum: number) => {
+            const { setCurrentPdf } = useAppStore.getState();
+            setCurrentPdf(pdf);
+            setCurrentPage(pageNum);
+            setShowNotes(false);
+          }}
         />
       )}
 
@@ -685,6 +686,15 @@ export default function PDFViewer() {
             window.getSelection()?.removeAllRanges();
             setSelectionData(null);
           }}
+        />
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <ExportModal
+          pdfId={currentPdf.id}
+          pdfFileName={currentPdf.fileName}
+          onClose={() => setShowExportModal(false)}
         />
       )}
     </div>

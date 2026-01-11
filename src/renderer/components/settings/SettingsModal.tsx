@@ -447,9 +447,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Erforderlich fur die KI-Karteikarten-Generierung. Erhalte einen Schlussel auf{' '}
+                Dein eigener API-Schlussel - <span className="text-amber-600 dark:text-amber-400">Kosten werden direkt von OpenAI berechnet</span>.{' '}
                 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
-                  platform.openai.com
+                  Schlussel erstellen
                 </a>
               </p>
             </div>

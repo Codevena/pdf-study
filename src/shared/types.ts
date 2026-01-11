@@ -234,3 +234,92 @@ export interface HeatmapData {
   startDate: string;
   endDate: string;
 }
+
+// Export Types
+export type ExportFormat = 'standard' | 'obsidian';
+
+export interface ExportOptions {
+  format: ExportFormat;
+  includeWikiLinks: boolean;
+  extractTags: boolean;
+  language: 'de' | 'en';
+}
+
+export interface ExportResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+}
+
+export interface BatchExportResult {
+  success: boolean;
+  exportedCount: number;
+  failedCount: number;
+  outputFolder?: string;
+  errors?: string[];
+  canceled?: boolean;
+}
+
+// Smart Links / Zettelkasten Types
+export interface ParsedWikiLink {
+  fullMatch: string;      // [[Book.pdf#p50]]
+  fileName: string;       // Book.pdf
+  pageNum: number | null;
+  startIndex: number;
+  endIndex: number;
+}
+
+export interface ResolvedLink {
+  pdfId: number;
+  pageNum: number | null;
+}
+
+export interface NoteLink {
+  id: number;
+  sourceNoteId: number;
+  sourcePdfId: number;
+  sourcePageNum: number;
+  targetPdfId: number | null;
+  targetPageNum: number | null;
+  linkText: string;
+  createdAt: string;
+}
+
+export interface Backlink {
+  noteId: number;
+  noteContent: string;
+  pdfId: number;
+  pdfFileName: string;
+  pageNum: number;
+  linkText: string;
+}
+
+export interface LinkSuggestion {
+  pdfId: number;
+  fileName: string;
+  pageCount: number;
+}
+
+export interface LinkResolution {
+  pdf: PDFDocument;
+  pageNum: number;
+}
+
+// Knowledge Graph Types
+export interface GraphNode {
+  id: string;           // "pdf-{id}"
+  label: string;        // PDF filename ohne .pdf
+  pdfId: number;
+  linkCount: number;    // Anzahl ausgehender + eingehender Links
+}
+
+export interface GraphEdge {
+  source: string;       // "pdf-{sourceId}"
+  target: string;       // "pdf-{targetId}"
+  value: number;        // Anzahl Links zwischen den PDFs
+}
+
+export interface LinkGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}

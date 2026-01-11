@@ -52,6 +52,14 @@ export const IPC_CHANNELS = {
 
   // Export
   EXPORT_PDF_DATA: 'export-pdf-data',
+  EXPORT_PDF_DATA_ENHANCED: 'export-pdf-data-enhanced',
+  EXPORT_ALL_PDFS: 'export-all-pdfs',
+
+  // Smart Links
+  GET_LINK_SUGGESTIONS: 'get-link-suggestions',
+  GET_BACKLINKS: 'get-backlinks',
+  RESOLVE_LINK: 'resolve-link',
+  GET_LINK_GRAPH: 'get-link-graph',
 
   // Highlights
   GET_HIGHLIGHTS: 'get-highlights',

@@ -253,6 +253,15 @@ export function deleteNote(db: DatabaseInstance, id: number): void {
   db.prepare('DELETE FROM notes WHERE id = ?').run(id);
 }
 
+export function getNoteById(db: DatabaseInstance, id: number): Note | null {
+  return db.prepare(`
+    SELECT id, pdf_id as pdfId, page_num as pageNum, content,
+           position_x as positionX, position_y as positionY,
+           created_at as createdAt, updated_at as updatedAt
+    FROM notes WHERE id = ?
+  `).get(id) as Note | null;
+}
+
 // Settings Queries
 export function getSetting(db: DatabaseInstance, key: string): string | null {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
