@@ -1,7 +1,7 @@
 import { app, BrowserWindow, protocol, net } from 'electron';
 import path from 'path';
 import { initDatabase } from './database';
-import { registerIpcHandlers } from './ipc-handlers';
+import { registerIpcHandlers } from './ipc';
 import { startFileWatcher, stopFileWatcher } from './file-watcher';
 import * as queries from './database/queries';
 
