@@ -4,8 +4,9 @@ import * as flashcardQueries from '../flashcards/queries';
 import { generateExplanation, generateFlashcardsFromHighlight, generateSummary } from '../flashcards/ai-generator';
 import { extractTextFromPages } from '../pdf/extractor';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
-import type { ExplanationStyle, OpenAIModel } from '../../shared/types';
+import type { ExplanationStyle } from '../../shared/types';
 import type { HandlerContext } from './types';
+import { getAIConfig } from './utils';
 
 export function registerAiHandlers({ db }: HandlerContext): void {
   // API Usage Stats
@@ -28,16 +29,11 @@ export function registerAiHandlers({ db }: HandlerContext): void {
       pdfId: number,
       pageNum: number
     ) => {
-      const apiKey = queries.getSetting(db, 'openaiApiKey');
-      if (!apiKey) {
-        return { success: false, error: 'OpenAI API-Schlüssel nicht konfiguriert. Bitte in den Einstellungen hinterlegen.' };
-      }
-
-      const model = (queries.getSetting(db, 'openaiModel') as OpenAIModel) || 'gpt-5-mini';
+      const config = getAIConfig(db);
       const language = (queries.getSetting(db, 'flashcardLanguage') as 'de' | 'en') || 'de';
 
       try {
-        const result = await generateExplanation(apiKey, model, {
+        const result = await generateExplanation(config, {
           text,
           style,
           language,
@@ -64,7 +60,7 @@ export function registerAiHandlers({ db }: HandlerContext): void {
         };
       } catch (error: any) {
         console.error('Explanation generation error:', error);
-        return { success: false, error: error.message || 'Fehler bei der Erklärungsgenerierung' };
+        return { success: false, error: error.message || 'Fehler bei der Erklaerungsgenerierung' };
       }
     }
   );
@@ -88,16 +84,11 @@ export function registerAiHandlers({ db }: HandlerContext): void {
       highlightId: number,
       pageNum: number
     ) => {
-      const apiKey = queries.getSetting(db, 'openaiApiKey');
-      if (!apiKey) {
-        return { success: false, error: 'OpenAI API-Schlüssel nicht konfiguriert.' };
-      }
-
-      const model = (queries.getSetting(db, 'openaiModel') as OpenAIModel) || 'gpt-5-mini';
+      const config = getAIConfig(db);
       const language = (queries.getSetting(db, 'flashcardLanguage') as 'de' | 'en') || 'de';
 
       try {
-        const result = await generateFlashcardsFromHighlight(apiKey, highlightText, model, language);
+        const result = await generateFlashcardsFromHighlight(config, highlightText, language);
 
         // Add cards to deck
         let cardsCreated = 0;
@@ -139,12 +130,7 @@ export function registerAiHandlers({ db }: HandlerContext): void {
       startPage: number,
       endPage: number
     ) => {
-      const apiKey = queries.getSetting(db, 'openaiApiKey');
-      if (!apiKey) {
-        return { success: false, error: 'OpenAI API-Schlüssel nicht konfiguriert.' };
-      }
-
-      const model = (queries.getSetting(db, 'openaiModel') as OpenAIModel) || 'gpt-5-mini';
+      const config = getAIConfig(db);
       const language = (queries.getSetting(db, 'flashcardLanguage') as 'de' | 'en') || 'de';
 
       try {
@@ -153,10 +139,10 @@ export function registerAiHandlers({ db }: HandlerContext): void {
         const { text } = await extractTextFromPages(filePath, pageNumbers);
 
         if (!text || text.trim().length < 50) {
-          return { success: false, error: 'Nicht genügend Text auf den ausgewählten Seiten gefunden.' };
+          return { success: false, error: 'Nicht genugend Text auf den ausgewaehlten Seiten gefunden.' };
         }
 
-        const result = await generateSummary(apiKey, model, {
+        const result = await generateSummary(config, {
           text,
           startPage,
           endPage,

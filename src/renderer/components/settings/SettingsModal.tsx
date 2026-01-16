@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import type { AppSettings } from '../../../shared/types';
-import type { OCRStatus } from '../../../shared/types';
+import type { AppSettings, OllamaStatus } from '../../../shared/types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -47,6 +46,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [ocrMessage, setOcrMessage] = useState<string | null>(null);
   const [apiUsage, setApiUsage] = useState<ApiUsageStats | null>(null);
   const [loadingUsage, setLoadingUsage] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
+  const [loadingOllama, setLoadingOllama] = useState(false);
 
   useEffect(() => {
     if (settings) {
@@ -59,8 +60,26 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (isOpen) {
       setOcrMessage(null);
       loadApiUsage();
+      checkOllamaStatus();
     }
   }, [isOpen]);
+
+  const checkOllamaStatus = async () => {
+    setLoadingOllama(true);
+    try {
+      const status = await window.electronAPI.checkOllamaStatus();
+      setOllamaStatus(status);
+      // Auto-select first model if none selected
+      if (status.available && status.models.length > 0 && !localSettings?.ollamaModel) {
+        setLocalSettings((prev) => prev ? { ...prev, ollamaModel: status.models[0] } : null);
+      }
+    } catch (error) {
+      console.error('Error checking Ollama status:', error);
+      setOllamaStatus({ available: false, models: [], baseUrl: '', error: 'Fehler beim Pruefen' });
+    } finally {
+      setLoadingOllama(false);
+    }
+  };
 
   const loadApiUsage = async () => {
     setLoadingUsage(true);
@@ -431,47 +450,153 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           {/* KI & Flashcard Settings */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              KI & Karteikarten
+              KI-Anbieter
             </label>
 
-            {/* OpenAI API Key */}
-            <div className="mb-4">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                OpenAI API-Schlussel
-              </label>
-              <input
-                type="password"
-                value={localSettings.openaiApiKey || ''}
-                onChange={(e) => setLocalSettings({ ...localSettings, openaiApiKey: e.target.value || null })}
-                placeholder="sk-..."
-                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                Dein eigener API-Schlussel - <span className="text-amber-600 dark:text-amber-400">Kosten werden direkt von OpenAI berechnet</span>.{' '}
-                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
-                  Schlussel erstellen
-                </a>
-              </p>
+            {/* Provider Toggle */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setLocalSettings({ ...localSettings, aiProvider: 'ollama' })}
+                className={`flex-1 px-4 py-3 border rounded-lg text-sm font-medium transition-colors ${
+                  localSettings.aiProvider === 'ollama'
+                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-lg">🦙</span>
+                  Lokal (Ollama)
+                </div>
+              </button>
+              <button
+                onClick={() => setLocalSettings({ ...localSettings, aiProvider: 'openai' })}
+                className={`flex-1 px-4 py-3 border rounded-lg text-sm font-medium transition-colors ${
+                  localSettings.aiProvider === 'openai'
+                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-lg">☁️</span>
+                  Cloud (OpenAI)
+                </div>
+              </button>
             </div>
 
-            {/* OpenAI Model */}
-            <div className="mb-4">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                KI-Modell
-              </label>
-              <select
-                value={localSettings.openaiModel || 'gpt-5-mini'}
-                onChange={(e) => setLocalSettings({ ...localSettings, openaiModel: e.target.value as 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2' })}
-                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
-              >
-                <option value="gpt-5-nano">GPT-5 Nano (schnell & gunstig)</option>
-                <option value="gpt-5-mini">GPT-5 Mini (empfohlen)</option>
-                <option value="gpt-5.2">GPT-5.2 (beste Qualitat)</option>
-              </select>
-            </div>
+            {/* Ollama Settings */}
+            {localSettings.aiProvider === 'ollama' && (
+              <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                {/* Ollama Status */}
+                <div className="flex items-center gap-2 mb-3">
+                  {loadingOllama ? (
+                    <div className="w-4 h-4 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
+                  ) : ollamaStatus?.available ? (
+                    <>
+                      <div className="w-2 h-2 bg-green-500 rounded-full" />
+                      <span className="text-sm text-green-600 dark:text-green-400">
+                        Ollama lauft ({ollamaStatus.models.length} Modelle)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 bg-amber-500 rounded-full" />
+                      <span className="text-sm text-amber-600 dark:text-amber-400">
+                        Ollama nicht verfugbar
+                      </span>
+                    </>
+                  )}
+                  <button
+                    onClick={checkOllamaStatus}
+                    disabled={loadingOllama}
+                    className="ml-auto text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                  >
+                    Aktualisieren
+                  </button>
+                </div>
+
+                {ollamaStatus?.available && ollamaStatus.models.length > 0 ? (
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Modell
+                    </label>
+                    <select
+                      value={localSettings.ollamaModel || ollamaStatus.models[0]}
+                      onChange={(e) => setLocalSettings({ ...localSettings, ollamaModel: e.target.value })}
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+                    >
+                      {ollamaStatus.models.map((model) => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : !loadingOllama && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <p className="mb-2">
+                      {ollamaStatus?.error || 'Ollama ist nicht installiert oder lauft nicht.'}
+                    </p>
+                    <a
+                      href="https://ollama.ai"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-600 hover:underline"
+                    >
+                      Ollama installieren →
+                    </a>
+                  </div>
+                )}
+
+                <p className="text-xs text-green-600 dark:text-green-500 mt-3 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Kostenlos - lauft lokal auf deinem Rechner
+                </p>
+              </div>
+            )}
+
+            {/* OpenAI Settings */}
+            {localSettings.aiProvider === 'openai' && (
+              <>
+                {/* OpenAI API Key */}
+                <div className="mb-4">
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    OpenAI API-Schlussel
+                  </label>
+                  <input
+                    type="password"
+                    value={localSettings.openaiApiKey || ''}
+                    onChange={(e) => setLocalSettings({ ...localSettings, openaiApiKey: e.target.value || null })}
+                    placeholder="sk-..."
+                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Dein eigener API-Schlussel - <span className="text-amber-600 dark:text-amber-400">Kosten werden direkt von OpenAI berechnet</span>.{' '}
+                    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+                      Schlussel erstellen
+                    </a>
+                  </p>
+                </div>
+
+                {/* OpenAI Model */}
+                <div className="mb-4">
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    KI-Modell
+                  </label>
+                  <select
+                    value={localSettings.openaiModel || 'gpt-5-mini'}
+                    onChange={(e) => setLocalSettings({ ...localSettings, openaiModel: e.target.value as 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2' })}
+                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-700 dark:text-gray-300"
+                  >
+                    <option value="gpt-5-nano">GPT-5 Nano (schnell & gunstig)</option>
+                    <option value="gpt-5-mini">GPT-5 Mini (empfohlen)</option>
+                    <option value="gpt-5.2">GPT-5.2 (beste Qualitat)</option>
+                  </select>
+                </div>
+              </>
+            )}
 
             {/* Flashcard Language */}
-            <div className="mb-4">
+            <div className="mb-4 pt-4 border-t border-gray-200 dark:border-gray-700">
               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                 Karteikarten-Sprache
               </label>
@@ -515,8 +640,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
             </div>
 
-            {/* API Cost Tracker */}
-            {localSettings.openaiApiKey && (
+            {/* API Cost Tracker - only show for OpenAI */}
+            {localSettings.aiProvider === 'openai' && localSettings.openaiApiKey && (
               <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">

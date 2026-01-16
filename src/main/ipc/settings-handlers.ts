@@ -36,9 +36,14 @@ export function registerSettingsHandlers({ db, mainWindow }: HandlerContext): vo
       ocrLanguages: safeJsonParse(queries.getSetting(db, 'ocrLanguages'), ['deu', 'eng']),
       searchLimit: parseInt(queries.getSetting(db, 'searchLimit') || '100', 10),
       searchMode: (queries.getSetting(db, 'searchMode') as 'exact' | 'fuzzy' | 'intelligent') || 'intelligent',
+      // AI Provider Settings
+      aiProvider: (queries.getSetting(db, 'aiProvider') as 'openai' | 'ollama') || 'openai',
       // OpenAI Settings
       openaiApiKey: queries.getSetting(db, 'openaiApiKey'),
       openaiModel: (queries.getSetting(db, 'openaiModel') as 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2') || 'gpt-5-mini',
+      // Ollama Settings
+      ollamaModel: queries.getSetting(db, 'ollamaModel') || 'llama3.1',
+      ollamaBaseUrl: queries.getSetting(db, 'ollamaBaseUrl') || 'http://localhost:11434',
       // Flashcard Settings
       flashcardLanguage: (queries.getSetting(db, 'flashcardLanguage') as 'de' | 'en') || 'de',
       dailyNewCards: parseInt(queries.getSetting(db, 'dailyNewCards') || '20', 10),
@@ -65,12 +70,23 @@ export function registerSettingsHandlers({ db, mainWindow }: HandlerContext): vo
     if (settings.searchMode !== undefined) {
       queries.setSetting(db, 'searchMode', settings.searchMode);
     }
+    // AI Provider Settings
+    if (settings.aiProvider !== undefined) {
+      queries.setSetting(db, 'aiProvider', settings.aiProvider);
+    }
     // OpenAI Settings
     if (settings.openaiApiKey !== undefined) {
       queries.setSetting(db, 'openaiApiKey', settings.openaiApiKey || '');
     }
     if (settings.openaiModel !== undefined) {
       queries.setSetting(db, 'openaiModel', settings.openaiModel);
+    }
+    // Ollama Settings
+    if (settings.ollamaModel !== undefined) {
+      queries.setSetting(db, 'ollamaModel', settings.ollamaModel);
+    }
+    if (settings.ollamaBaseUrl !== undefined) {
+      queries.setSetting(db, 'ollamaBaseUrl', settings.ollamaBaseUrl);
     }
     // Flashcard Settings
     if (settings.flashcardLanguage !== undefined) {

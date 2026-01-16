@@ -123,6 +123,9 @@ export const IPC_CHANNELS = {
   GET_SUMMARIES: 'get-summaries',
   DELETE_SUMMARY: 'delete-summary',
 
+  // Ollama
+  OLLAMA_CHECK_STATUS: 'ollama-check-status',
+
   // Reading Progress
   READING_ADD_SESSION: 'reading-add-session',
   READING_GET_HEATMAP: 'reading-get-heatmap',

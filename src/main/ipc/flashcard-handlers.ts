@@ -6,8 +6,9 @@ import { dbToFsrsCard, fsrsCardToDb, getNextReview, getNextIntervals } from '../
 import { generateFlashcards } from '../flashcards/ai-generator';
 import { extractTextFromPages } from '../pdf/extractor';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
-import type { FSRSRating, OpenAIModel, GeneratedCard } from '../../shared/types';
+import type { FSRSRating, GeneratedCard } from '../../shared/types';
 import type { HandlerContext } from './types';
+import { getAIConfig } from './utils';
 
 export function registerFlashcardHandlers({ db, mainWindow }: HandlerContext): void {
   // Deck Handlers
@@ -202,19 +203,14 @@ export function registerFlashcardHandlers({ db, mainWindow }: HandlerContext): v
       _,
       text: string,
       options: {
-        model: OpenAIModel;
         language: 'de' | 'en';
         count: number;
       }
     ): Promise<{ success: boolean; cards?: GeneratedCard[]; error?: string }> => {
-      const apiKey = queries.getSetting(db, 'openaiApiKey');
-
-      if (!apiKey) {
-        return { success: false, error: 'OpenAI API-Schlussel nicht konfiguriert. Bitte in den Einstellungen hinterlegen.' };
-      }
+      const config = getAIConfig(db);
 
       try {
-        const { cards, usage } = await generateFlashcards(apiKey, text, options);
+        const { cards, usage } = await generateFlashcards(config, text, options);
 
         // Track API usage
         queries.addApiUsage(
@@ -260,27 +256,22 @@ export function registerFlashcardHandlers({ db, mainWindow }: HandlerContext): v
       filePath: string,
       pageNumbers: number[],
       options: {
-        model: OpenAIModel;
         language: 'de' | 'en';
         count: number;
       }
     ): Promise<{ success: boolean; cards?: GeneratedCard[]; error?: string }> => {
-      const apiKey = queries.getSetting(db, 'openaiApiKey');
-
-      if (!apiKey) {
-        return { success: false, error: 'OpenAI API-Schlussel nicht konfiguriert. Bitte in den Einstellungen hinterlegen.' };
-      }
+      const config = getAIConfig(db);
 
       try {
         // Extract text from the specified pages
         const { text } = await extractTextFromPages(filePath, pageNumbers);
 
         if (!text.trim()) {
-          return { success: false, error: 'Kein Text auf den ausgewahlten Seiten gefunden.' };
+          return { success: false, error: 'Kein Text auf den ausgewaehlten Seiten gefunden.' };
         }
 
         // Generate flashcards from the extracted text
-        const { cards, usage } = await generateFlashcards(apiKey, text, options);
+        const { cards, usage } = await generateFlashcards(config, text, options);
 
         // Track API usage
         queries.addApiUsage(

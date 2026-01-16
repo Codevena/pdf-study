@@ -10,6 +10,7 @@ import { registerOcrHandlers } from './ocr-handlers';
 import { registerFlashcardHandlers } from './flashcard-handlers';
 import { registerAiHandlers } from './ai-handlers';
 import { registerReadingHandlers } from './reading-handlers';
+import { registerOllamaHandlers } from './ollama-handlers';
 
 /**
  * Register all IPC handlers for the main process.
@@ -27,6 +28,7 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   registerFlashcardHandlers(context);
   registerAiHandlers(context);
   registerReadingHandlers(context);
+  registerOllamaHandlers(context);
 }
 
 // Re-export types and state for external use

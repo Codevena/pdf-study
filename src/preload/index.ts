@@ -11,6 +11,7 @@ import type {
   RecentView,
   SearchHistoryItem,
   OCRStatus,
+  OllamaStatus,
   OutlineItem,
   Highlight,
   HighlightRect,
@@ -215,6 +216,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   cancelOCR: (): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.CANCEL_OCR),
+
+  // ============ OLLAMA ============
+
+  checkOllamaStatus: (): Promise<OllamaStatus> =>
+    ipcRenderer.invoke(IPC_CHANNELS.OLLAMA_CHECK_STATUS),
 
   // ============ FLASHCARDS ============
 
@@ -517,6 +523,8 @@ declare global {
       startOCRForPdf: (pdfId: number) => Promise<{ success: boolean; error?: string }>;
       getOCRStatus: () => Promise<OCRStatus>;
       cancelOCR: () => Promise<boolean>;
+      // Ollama
+      checkOllamaStatus: () => Promise<OllamaStatus>;
       // Flashcard Decks
       getFlashcardDecks: (pdfId?: number) => Promise<FlashcardDeck[]>;
       getFlashcardDeck: (id: number) => Promise<FlashcardDeck | undefined>;

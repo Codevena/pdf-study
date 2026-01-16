@@ -12,6 +12,7 @@ import {
   setCachedSearchResults,
   clearSearchCache,
 } from './state';
+import { getAIConfig } from './utils';
 
 export function registerPdfHandlers({ db, mainWindow }: HandlerContext): void {
   // PDFs
@@ -29,12 +30,7 @@ export function registerPdfHandlers({ db, mainWindow }: HandlerContext): void {
 
   // AI-based outline generation
   ipcMain.handle(IPC_CHANNELS.GENERATE_AI_OUTLINE, async (_, filePath: string, pageCount: number) => {
-    const apiKey = queries.getSetting(db, 'openaiApiKey');
-    if (!apiKey) {
-      return { success: false, error: 'Kein OpenAI API-Schlussel konfiguriert' };
-    }
-
-    const model = (queries.getSetting(db, 'openaiModel') as 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-5.2') || 'gpt-5-mini';
+    const config = getAIConfig(db);
 
     try {
       // Extract text from first 15 pages (usually contains TOC)
@@ -43,10 +39,10 @@ export function registerPdfHandlers({ db, mainWindow }: HandlerContext): void {
       const { text } = await extractTextFromPages(filePath, pageNumbers);
 
       if (!text || text.length < 100) {
-        return { success: false, error: 'Nicht genug Text gefunden. Moglicherweise ist OCR erforderlich.' };
+        return { success: false, error: 'Nicht genug Text gefunden. Moeglicherweise ist OCR erforderlich.' };
       }
 
-      const { outline, usage } = await generateOutlineFromText(apiKey, text, model, pageCount);
+      const { outline, usage } = await generateOutlineFromText(config, text, pageCount);
 
       // Track API usage
       queries.addApiUsage(

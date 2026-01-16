@@ -79,9 +79,14 @@ export interface AppSettings {
   ocrLanguages: string[];
   searchLimit: number;
   searchMode: 'exact' | 'fuzzy' | 'intelligent';
+  // AI Provider Settings
+  aiProvider: AIProvider;
   // OpenAI Settings
   openaiApiKey: string | null;
   openaiModel: OpenAIModel;
+  // Ollama Settings
+  ollamaModel: string;
+  ollamaBaseUrl: string;
   // Flashcard Settings
   flashcardLanguage: 'de' | 'en';
   dailyNewCards: number;
@@ -250,6 +255,16 @@ export interface FlashcardStats {
   dueToday: number;
   reviewedToday: number;
   streak: number;
+}
+
+// AI Provider Types
+export type AIProvider = 'openai' | 'ollama';
+
+export interface OllamaStatus {
+  available: boolean;
+  models: string[];
+  baseUrl: string;
+  error?: string;
 }
 
 // AI Generation Types

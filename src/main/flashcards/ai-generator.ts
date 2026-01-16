@@ -1,34 +1,19 @@
-import OpenAI from 'openai';
 import type { OpenAIModel, GeneratedCard, FlashcardType, OutlineItem, ExplanationStyle } from '../../shared/types';
+import {
+  type AIProviderConfig,
+  type UsageData,
+  chat,
+  createUsageData,
+  validateConfig,
+  getModelName,
+} from '../ai/provider';
 
 interface GenerationOptions {
-  model: OpenAIModel;
   language: 'de' | 'en';
   count: number;
 }
 
-// GPT-5 Model Pricing (USD per 1M tokens)
-const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  'gpt-5-nano': { input: 0.05, output: 0.40 },
-  'gpt-5-mini': { input: 0.25, output: 2.00 },
-  'gpt-5.2': { input: 1.75, output: 14.00 },
-  // Fallback for unknown models
-  'default': { input: 0.25, output: 2.00 },
-};
-
-export interface UsageData {
-  model: string;
-  promptTokens: number;
-  completionTokens: number;
-  costUsd: number;
-}
-
-function calculateCost(model: string, promptTokens: number, completionTokens: number): number {
-  const pricing = MODEL_PRICING[model] || MODEL_PRICING['default'];
-  const inputCost = (promptTokens / 1_000_000) * pricing.input;
-  const outputCost = (completionTokens / 1_000_000) * pricing.output;
-  return inputCost + outputCost;
-}
+export type { UsageData };
 
 const SYSTEM_PROMPTS = {
   de: `Du bist ein Experte fur die Erstellung von Lernkarteikarten. Erstelle Karteikarten im Frage-Antwort-Format.
@@ -56,15 +41,14 @@ export interface GenerationResult {
 }
 
 export async function generateFlashcards(
-  apiKey: string,
+  config: AIProviderConfig,
   text: string,
   options: GenerationOptions
 ): Promise<GenerationResult> {
-  if (!apiKey) {
-    throw new Error('OpenAI API-Schlussel fehlt');
+  const validation = validateConfig(config);
+  if (!validation.valid) {
+    throw new Error(validation.error);
   }
-
-  const openai = new OpenAI({ apiKey });
 
   const systemPrompt = SYSTEM_PROMPTS[options.language];
   const userPrompt = options.language === 'de'
@@ -80,34 +64,16 @@ Text:
 ${text}`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: options.model,
-      messages: [
-        { role: 'user', content: `${systemPrompt}\n\n${userPrompt}` },
-      ],
-      max_completion_tokens: 32000,
-    });
+    const result = await chat(
+      config,
+      [{ role: 'user', content: `${systemPrompt}\n\n${userPrompt}` }],
+      { maxTokens: 32000 }
+    );
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('Keine Antwort von OpenAI erhalten');
-    }
-
-    // Calculate usage data
-    const promptTokens = response.usage?.prompt_tokens ?? 0;
-    const completionTokens = response.usage?.completion_tokens ?? 0;
-    const costUsd = calculateCost(options.model, promptTokens, completionTokens);
-
-    const usage: UsageData = {
-      model: options.model,
-      promptTokens,
-      completionTokens,
-      costUsd,
-    };
+    const usage = createUsageData(config, result.usage.promptTokens, result.usage.completionTokens);
 
     // Parse JSON from response
-    // Try to extract JSON array from the response
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    const jsonMatch = result.content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       throw new Error('Konnte keine Karteikarten aus der Antwort extrahieren');
     }
@@ -134,16 +100,14 @@ ${text}`;
 }
 
 export async function generateFlashcardsFromHighlight(
-  apiKey: string,
+  config: AIProviderConfig,
   highlightText: string,
-  model: OpenAIModel,
   language: 'de' | 'en'
 ): Promise<GenerationResult> {
   // For highlights, generate 1-3 cards depending on text length
   const count = Math.min(3, Math.max(1, Math.floor(highlightText.length / 100)));
 
-  return generateFlashcards(apiKey, highlightText, {
-    model,
+  return generateFlashcards(config, highlightText, {
     language,
     count,
   });
@@ -159,16 +123,14 @@ export interface OutlineResult {
  * Analyzes the first pages to detect chapter/section structure
  */
 export async function generateOutlineFromText(
-  apiKey: string,
+  config: AIProviderConfig,
   text: string,
-  model: OpenAIModel,
   totalPages: number
 ): Promise<OutlineResult> {
-  if (!apiKey) {
-    throw new Error('OpenAI API-Schlussel fehlt');
+  const validation = validateConfig(config);
+  if (!validation.valid) {
+    throw new Error(validation.error);
   }
-
-  const openai = new OpenAI({ apiKey });
 
   const userPrompt = `Extrahiere das VOLLSTANDIGE Inhaltsverzeichnis aus diesem PDF-Text. Das Dokument hat ${totalPages} Seiten.
 
@@ -183,36 +145,18 @@ Text:
 ${text.slice(0, 25000)}`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model,
-      messages: [
-        { role: 'user', content: userPrompt },
-      ],
-      max_completion_tokens: 16000,
-    });
+    const result = await chat(
+      config,
+      [{ role: 'user', content: userPrompt }],
+      { maxTokens: 16000 }
+    );
 
-    console.log('OpenAI Response:', JSON.stringify(response, null, 2));
+    console.log('AI Response:', JSON.stringify(result, null, 2));
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      console.error('No content in response. Full response:', response);
-      throw new Error('Keine Antwort von OpenAI erhalten');
-    }
-
-    // Calculate usage data
-    const promptTokens = response.usage?.prompt_tokens ?? 0;
-    const completionTokens = response.usage?.completion_tokens ?? 0;
-    const costUsd = calculateCost(model, promptTokens, completionTokens);
-
-    const usage: UsageData = {
-      model,
-      promptTokens,
-      completionTokens,
-      costUsd,
-    };
+    const usage = createUsageData(config, result.usage.promptTokens, result.usage.completionTokens);
 
     // Parse JSON from response
-    const jsonMatch = content.match(/\[[\s\S]*\]/);
+    const jsonMatch = result.content.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       throw new Error('Konnte kein Inhaltsverzeichnis aus der Antwort extrahieren');
     }
@@ -281,12 +225,12 @@ Format your answer clearly and organized.`,
 };
 
 export async function generateExplanation(
-  apiKey: string,
-  model: OpenAIModel,
+  config: AIProviderConfig,
   options: ExplanationOptions
 ): Promise<ExplanationResult> {
-  if (!apiKey) {
-    throw new Error('OpenAI API-Schlüssel fehlt');
+  const validation = validateConfig(config);
+  if (!validation.valid) {
+    throw new Error(validation.error);
   }
 
   // Truncate very long text to avoid excessive tokens
@@ -295,42 +239,23 @@ export async function generateExplanation(
     ? options.text.slice(0, maxTextLength) + '...'
     : options.text;
 
-  const openai = new OpenAI({ apiKey });
-
   const systemPrompt = EXPLANATION_PROMPTS[options.style][options.language];
-  const userPrompt = options.language === 'de'
-    ? `Text:\n"${text}"`
-    : `Text:\n"${text}"`;
+  const userPrompt = `Text:\n"${text}"`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model,
-      messages: [
+    const result = await chat(
+      config,
+      [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      max_completion_tokens: options.style === 'detailed' ? 1000 : 300,
-    });
+      { maxTokens: options.style === 'detailed' ? 1000 : 300 }
+    );
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('Keine Antwort von OpenAI erhalten');
-    }
-
-    // Calculate usage data
-    const promptTokens = response.usage?.prompt_tokens ?? 0;
-    const completionTokens = response.usage?.completion_tokens ?? 0;
-    const costUsd = calculateCost(model, promptTokens, completionTokens);
-
-    const usage: UsageData = {
-      model,
-      promptTokens,
-      completionTokens,
-      costUsd,
-    };
+    const usage = createUsageData(config, result.usage.promptTokens, result.usage.completionTokens);
 
     return {
-      explanation: content.trim(),
+      explanation: result.content.trim(),
       usage,
     };
   } catch (error: any) {
@@ -386,12 +311,12 @@ The summary should:
 };
 
 export async function generateSummary(
-  apiKey: string,
-  model: OpenAIModel,
+  config: AIProviderConfig,
   options: SummaryOptions
 ): Promise<SummaryGenResult> {
-  if (!apiKey) {
-    throw new Error('OpenAI API-Schlüssel fehlt');
+  const validation = validateConfig(config);
+  if (!validation.valid) {
+    throw new Error(validation.error);
   }
 
   // Truncate very long text to avoid excessive tokens
@@ -399,8 +324,6 @@ export async function generateSummary(
   const text = options.text.length > maxTextLength
     ? options.text.slice(0, maxTextLength) + '...'
     : options.text;
-
-  const openai = new OpenAI({ apiKey });
 
   const systemPrompt = SUMMARY_PROMPTS[options.language];
   const pageRange = options.startPage === options.endPage
@@ -412,39 +335,24 @@ export async function generateSummary(
     : `Text section (pages ${options.startPage}-${options.endPage}):\n\n${text}`;
 
   try {
-    const response = await openai.chat.completions.create({
-      model,
-      messages: [
+    const result = await chat(
+      config,
+      [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      max_completion_tokens: 2000,
-    });
+      { maxTokens: 2000 }
+    );
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('Keine Antwort von OpenAI erhalten');
-    }
-
-    // Calculate usage data
-    const promptTokens = response.usage?.prompt_tokens ?? 0;
-    const completionTokens = response.usage?.completion_tokens ?? 0;
-    const costUsd = calculateCost(model, promptTokens, completionTokens);
-
-    const usage: UsageData = {
-      model,
-      promptTokens,
-      completionTokens,
-      costUsd,
-    };
+    const usage = createUsageData(config, result.usage.promptTokens, result.usage.completionTokens);
 
     // Parse JSON response
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       // Fallback: use content as summary directly
       return {
         title: pageRange,
-        summary: content.trim(),
+        summary: result.content.trim(),
         usage,
       };
     }
@@ -453,7 +361,7 @@ export async function generateSummary(
 
     return {
       title: parsed.title || pageRange,
-      summary: parsed.summary || content.trim(),
+      summary: parsed.summary || result.content.trim(),
       usage,
     };
   } catch (error: any) {
