@@ -6,14 +6,14 @@ import * as queries from './database/queries';
 import * as linkQueries from './database/link-queries';
 import * as flashcardQueries from './flashcards/queries';
 import { dbToFsrsCard, fsrsCardToDb, getNextReview, getNextIntervals } from './flashcards/fsrs';
-import { generateFlashcards, generateOutlineFromText } from './flashcards/ai-generator';
+import { generateFlashcards, generateOutlineFromText, generateExplanation, generateFlashcardsFromHighlight, generateSummary } from './flashcards/ai-generator';
 import { extractTextFromPDF, extractTextFromPages, computeFileHash, findPDFsInFolder, extractOutline } from './pdf/extractor';
 import { pageNeedsOCR, processPageOCR, terminateWorker, clearPdfCache } from './pdf/ocr';
 import { startFileWatcher } from './file-watcher';
 import { generateMarkdown, generateMarkdownEnhanced } from './export/markdown';
 import { parseWikiLinks, resolveLink, resolveLinkWithLookup } from './links/parser';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type { AppSettings, IndexingStatus, OCRStatus, HighlightRect, FSRSRating, OpenAIModel, GeneratedCard, ExportOptions, SearchResult } from '../shared/types';
+import type { AppSettings, IndexingStatus, OCRStatus, HighlightRect, FSRSRating, OpenAIModel, GeneratedCard, ExportOptions, SearchResult, ExplanationStyle } from '../shared/types';
 
 /**
  * Safely parse JSON with a fallback value.
@@ -1102,6 +1102,221 @@ export function registerIpcHandlers(db: DatabaseInstance, mainWindow: BrowserWin
   ipcMain.handle(IPC_CHANNELS.API_CLEAR_USAGE, () => {
     queries.clearApiUsage(db);
     return { success: true };
+  });
+
+  // ============ AI EXPLANATION HANDLERS ============
+
+  ipcMain.handle(
+    IPC_CHANNELS.EXPLAIN_TEXT,
+    async (
+      _,
+      text: string,
+      style: ExplanationStyle,
+      pdfId: number,
+      pageNum: number
+    ) => {
+      const apiKey = queries.getSetting(db, 'openaiApiKey');
+      if (!apiKey) {
+        return { success: false, error: 'OpenAI API-Schlüssel nicht konfiguriert. Bitte in den Einstellungen hinterlegen.' };
+      }
+
+      const model = (queries.getSetting(db, 'openaiModel') as OpenAIModel) || 'gpt-5-mini';
+      const language = (queries.getSetting(db, 'flashcardLanguage') as 'de' | 'en') || 'de';
+
+      try {
+        const result = await generateExplanation(apiKey, model, {
+          text,
+          style,
+          language,
+        });
+
+        // Save to database
+        const id = queries.addExplanation(db, pdfId, pageNum, text, result.explanation, style);
+
+        // Track API usage
+        queries.addApiUsage(
+          db,
+          result.usage.model,
+          'explanation',
+          result.usage.promptTokens,
+          result.usage.completionTokens,
+          result.usage.costUsd
+        );
+
+        return {
+          success: true,
+          explanation: result.explanation,
+          id,
+          cost: result.usage.costUsd,
+        };
+      } catch (error: any) {
+        console.error('Explanation generation error:', error);
+        return { success: false, error: error.message || 'Fehler bei der Erklärungsgenerierung' };
+      }
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.GET_EXPLANATIONS, (_, pdfId: number, pageNum?: number) => {
+    return queries.getExplanations(db, pdfId, pageNum);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DELETE_EXPLANATION, (_, id: number) => {
+    queries.deleteExplanation(db, id);
+    return { success: true };
+  });
+
+  // ============ AI QUIZ FROM HIGHLIGHT ============
+
+  ipcMain.handle(
+    IPC_CHANNELS.GENERATE_QUIZ_FROM_HIGHLIGHT,
+    async (
+      _,
+      highlightText: string,
+      deckId: number,
+      highlightId: number,
+      pageNum: number
+    ) => {
+      const apiKey = queries.getSetting(db, 'openaiApiKey');
+      if (!apiKey) {
+        return { success: false, error: 'OpenAI API-Schlüssel nicht konfiguriert.' };
+      }
+
+      const model = (queries.getSetting(db, 'openaiModel') as OpenAIModel) || 'gpt-5-mini';
+      const language = (queries.getSetting(db, 'flashcardLanguage') as 'de' | 'en') || 'de';
+
+      try {
+        const result = await generateFlashcardsFromHighlight(apiKey, highlightText, model, language);
+
+        // Add cards to deck
+        let cardsCreated = 0;
+        for (const card of result.cards) {
+          flashcardQueries.addCard(db, deckId, card.front, card.back, 'basic', highlightId, pageNum);
+          cardsCreated++;
+        }
+
+        // Track API usage
+        queries.addApiUsage(
+          db,
+          result.usage.model,
+          'quiz_from_highlight',
+          result.usage.promptTokens,
+          result.usage.completionTokens,
+          result.usage.costUsd
+        );
+
+        return {
+          success: true,
+          cardsCreated,
+          deckId,
+          cost: result.usage.costUsd,
+        };
+      } catch (error: any) {
+        console.error('Quiz from highlight error:', error);
+        return { success: false, error: error.message || 'Fehler bei der Quiz-Generierung' };
+      }
+    }
+  );
+
+  // ============ AI SUMMARY HANDLERS ============
+
+  ipcMain.handle(
+    IPC_CHANNELS.GENERATE_SUMMARY,
+    async (
+      _,
+      pdfId: number,
+      filePath: string,
+      startPage: number,
+      endPage: number
+    ) => {
+      const apiKey = queries.getSetting(db, 'openaiApiKey');
+      if (!apiKey) {
+        return { success: false, error: 'OpenAI API-Schlüssel nicht konfiguriert.' };
+      }
+
+      const model = (queries.getSetting(db, 'openaiModel') as OpenAIModel) || 'gpt-5-mini';
+      const language = (queries.getSetting(db, 'flashcardLanguage') as 'de' | 'en') || 'de';
+
+      try {
+        // Extract text from pages
+        const pageNumbers = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
+        const { text } = await extractTextFromPages(filePath, pageNumbers);
+
+        if (!text || text.trim().length < 50) {
+          return { success: false, error: 'Nicht genügend Text auf den ausgewählten Seiten gefunden.' };
+        }
+
+        const result = await generateSummary(apiKey, model, {
+          text,
+          startPage,
+          endPage,
+          language,
+        });
+
+        // Save to database
+        const id = queries.addSummary(db, pdfId, startPage, endPage, result.title, result.summary);
+
+        // Track API usage
+        queries.addApiUsage(
+          db,
+          result.usage.model,
+          'summary',
+          result.usage.promptTokens,
+          result.usage.completionTokens,
+          result.usage.costUsd
+        );
+
+        return {
+          success: true,
+          summary: result.summary,
+          title: result.title,
+          id,
+          cost: result.usage.costUsd,
+        };
+      } catch (error: any) {
+        console.error('Summary generation error:', error);
+        return { success: false, error: error.message || 'Fehler bei der Zusammenfassung' };
+      }
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.GET_SUMMARIES, (_, pdfId: number) => {
+    return queries.getSummaries(db, pdfId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.DELETE_SUMMARY, (_, id: number) => {
+    queries.deleteSummary(db, id);
+    return { success: true };
+  });
+
+  // ============ READING PROGRESS HANDLERS ============
+
+  ipcMain.handle(IPC_CHANNELS.READING_ADD_SESSION, (_, pdfId: number, pagesRead: number) => {
+    queries.addReadingSession(db, pdfId, pagesRead);
+    return { success: true };
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.READING_GET_HEATMAP,
+    (_, timeframe: 'week' | 'month' | 'year') => {
+      return queries.getReadingHeatmapData(db, timeframe);
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.READING_GET_STATS, () => {
+    return queries.getReadingStats(db);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.READING_GET_GOAL, () => {
+    return queries.getReadingGoal(db);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.READING_SET_GOAL, (_, dailyPages: number) => {
+    queries.setReadingGoal(db, dailyPages);
+    return { success: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PDF_GET_ALL_WITH_PROGRESS, () => {
+    return queries.getAllPdfsWithProgress(db);
   });
 }
 

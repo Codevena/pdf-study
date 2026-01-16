@@ -7,6 +7,11 @@ import type { PDFDocument, Tag } from '../../../shared/types';
 
 const ITEM_HEIGHT = 90; // Height of each PDF item in pixels
 
+interface PdfProgress {
+  currentPage: number;
+  progress: number;
+}
+
 export default function PDFLibrary() {
   const { pdfs, setCurrentPdf, currentPdf, setPdfs, setIndexingStatus, libraryViewMode, setLibraryViewMode } = useAppStore();
   const [tags, setTags] = useState<Tag[]>([]);
@@ -14,6 +19,7 @@ export default function PDFLibrary() {
   const [pdfTagsMap, setPdfTagsMap] = useState<Map<number, Tag[]>>(new Map());
   const [showTagManager, setShowTagManager] = useState(false);
   const [editingPdfId, setEditingPdfId] = useState<number | null>(null);
+  const [progressMap, setProgressMap] = useState<Map<number, PdfProgress>>(new Map());
 
   const loadTags = useCallback(async () => {
     const allTags = await window.electronAPI.getTags();
@@ -30,10 +36,20 @@ export default function PDFLibrary() {
     setPdfTagsMap(map);
   }, []);
 
+  const loadProgress = useCallback(async () => {
+    const pdfsWithProgress = await window.electronAPI.getAllPdfsWithProgress();
+    const map = new Map<number, PdfProgress>();
+    for (const pdf of pdfsWithProgress) {
+      map.set(pdf.id, { currentPage: pdf.currentPage, progress: pdf.progress });
+    }
+    setProgressMap(map);
+  }, []);
+
   useEffect(() => {
     loadTags();
     loadAllPdfTags();
-  }, [loadTags, loadAllPdfTags]);
+    loadProgress();
+  }, [loadTags, loadAllPdfTags, loadProgress]);
 
   const handleRefresh = useCallback(async () => {
     setIndexingStatus({
@@ -71,6 +87,9 @@ export default function PDFLibrary() {
     const pdfTags = pdfTagsMap.get(pdf.id) || [];
     const isSelected = currentPdf?.id === pdf.id;
     const isEditing = editingPdfId === pdf.id;
+    const progress = progressMap.get(pdf.id);
+    const progressPercent = progress?.progress ?? 0;
+    const currentPage = progress?.currentPage ?? 1;
 
     return (
       <div
@@ -99,6 +118,24 @@ export default function PDFLibrary() {
                   <span className="ml-2 text-amber-600 dark:text-amber-400">OCR</span>
                 )}
               </p>
+              {/* Reading Progress Bar */}
+              {pdf.pageCount > 0 && progressPercent > 0 && (
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        progressPercent >= 100
+                          ? 'bg-green-500'
+                          : 'bg-primary-500'
+                      }`}
+                      style={{ width: `${Math.min(100, progressPercent)}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                    {progressPercent}% ({currentPage}/{pdf.pageCount})
+                  </span>
+                </div>
+              )}
               {pdfTags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {pdfTags.map((tag) => (
@@ -136,13 +173,15 @@ export default function PDFLibrary() {
         </div>
       </div>
     );
-  }, [currentPdf, editingPdfId, pdfTagsMap, handlePdfClick]);
+  }, [currentPdf, editingPdfId, pdfTagsMap, progressMap, handlePdfClick]);
 
   const renderGridItem = useCallback((pdf: PDFDocument) => {
     const pdfTags = pdfTagsMap.get(pdf.id) || [];
     const isSelected = currentPdf?.id === pdf.id;
     const displayTags = pdfTags.slice(0, 2);
     const extraTagCount = pdfTags.length - 2;
+    const progress = progressMap.get(pdf.id);
+    const progressPercent = progress?.progress ?? 0;
 
     return (
       <div
@@ -152,14 +191,28 @@ export default function PDFLibrary() {
           isSelected ? 'bg-primary-50 dark:bg-primary-900/30 ring-2 ring-primary-500' : ''
         }`}
       >
-        <div className="aspect-[3/4] mb-2 rounded overflow-hidden bg-gray-100 dark:bg-gray-700 shadow-sm group-hover:shadow-md transition-shadow">
+        <div className="aspect-[3/4] mb-2 rounded overflow-hidden bg-gray-100 dark:bg-gray-700 shadow-sm group-hover:shadow-md transition-shadow relative">
           <PDFThumbnail filePath={pdf.filePath} width={120} height={160} />
+          {/* Progress bar overlay at bottom of thumbnail */}
+          {pdf.pageCount > 0 && progressPercent > 0 && (
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
+              <div
+                className={`h-full ${progressPercent >= 100 ? 'bg-green-500' : 'bg-primary-500'}`}
+                style={{ width: `${Math.min(100, progressPercent)}%` }}
+              />
+            </div>
+          )}
         </div>
         <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate" title={pdf.fileName}>
           {pdf.fileName.replace('.pdf', '')}
         </p>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {pdf.pageCount} Seiten
+          {progressPercent > 0 && (
+            <span className={`ml-1 ${progressPercent >= 100 ? 'text-green-500' : 'text-primary-500'}`}>
+              · {progressPercent}%
+            </span>
+          )}
         </p>
         {displayTags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1">
@@ -196,7 +249,7 @@ export default function PDFLibrary() {
         </button>
       </div>
     );
-  }, [currentPdf, pdfTagsMap, handlePdfClick]);
+  }, [currentPdf, pdfTagsMap, progressMap, handlePdfClick]);
 
   return (
     <div className="h-full flex flex-col">

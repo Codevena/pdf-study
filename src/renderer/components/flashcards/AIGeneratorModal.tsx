@@ -165,10 +165,24 @@ export default function AIGeneratorModal({
       if (result.success && result.cards) {
         setGeneratedCards(result.cards);
       } else {
-        setError(result.error || 'Fehler bei der Generierung');
+        const errorMsg = result.error || 'Unbekannter Fehler';
+        if (errorMsg.includes('API key') || errorMsg.includes('api_key') || errorMsg.includes('401')) {
+          setError('API-Key fehlt oder ist ungültig. Bitte in den Einstellungen prüfen.');
+        } else if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
+          setError('API-Limit erreicht. Bitte später erneut versuchen.');
+        } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+          setError('Netzwerkfehler. Bitte Internetverbindung prüfen.');
+        } else {
+          setError(errorMsg);
+        }
       }
     } catch (err: any) {
-      setError(err.message || 'Unbekannter Fehler');
+      const errorMsg = err.message || 'Unbekannter Fehler';
+      if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+        setError('Netzwerkfehler. Bitte Internetverbindung prüfen.');
+      } else {
+        setError(errorMsg);
+      }
     } finally {
       setLoading(false);
     }

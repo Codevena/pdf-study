@@ -110,6 +110,27 @@ export const IPC_CHANNELS = {
   API_GET_USAGE_STATS: 'api-get-usage-stats',
   API_CLEAR_USAGE: 'api-clear-usage',
 
+  // AI Explanations
+  EXPLAIN_TEXT: 'explain-text',
+  GET_EXPLANATIONS: 'get-explanations',
+  DELETE_EXPLANATION: 'delete-explanation',
+
+  // AI Quiz from Highlight
+  GENERATE_QUIZ_FROM_HIGHLIGHT: 'generate-quiz-from-highlight',
+
+  // AI Summaries
+  GENERATE_SUMMARY: 'generate-summary',
+  GET_SUMMARIES: 'get-summaries',
+  DELETE_SUMMARY: 'delete-summary',
+
+  // Reading Progress
+  READING_ADD_SESSION: 'reading-add-session',
+  READING_GET_HEATMAP: 'reading-get-heatmap',
+  READING_GET_STATS: 'reading-get-stats',
+  READING_GET_GOAL: 'reading-get-goal',
+  READING_SET_GOAL: 'reading-set-goal',
+  PDF_GET_ALL_WITH_PROGRESS: 'pdf-get-all-with-progress',
+
   // Events (Main -> Renderer)
   INDEXING_PROGRESS: 'indexing-progress',
   PDF_ADDED: 'pdf-added',

@@ -35,6 +35,12 @@ export default function HighlightsSidebar({
   const [isCreating, setIsCreating] = useState(false);
   const [showSuccess, setShowSuccess] = useState<number | null>(null);
 
+  // AI Quiz generation state
+  const [generatingQuizFor, setGeneratingQuizFor] = useState<number | null>(null);
+  const [quizDeckId, setQuizDeckId] = useState<number | null>(null);
+  const [quizSuccess, setQuizSuccess] = useState<{ highlightId: number; count: number } | null>(null);
+  const [quizError, setQuizError] = useState<string | null>(null);
+
   useEffect(() => {
     async function loadHighlights() {
       setLoading(true);
@@ -45,22 +51,25 @@ export default function HighlightsSidebar({
     loadHighlights();
   }, [pdfId]);
 
-  // Load decks when opening flashcard creator
+  // Load decks when opening flashcard creator or quiz generator
   useEffect(() => {
-    if (creatingCardFor !== null) {
+    if (creatingCardFor !== null || generatingQuizFor !== null) {
       window.electronAPI.getFlashcardDecks().then((allDecks) => {
         setDecks(allDecks);
         // Pre-select first deck or PDF-specific deck
         const pdfDeck = allDecks.find((d) => d.pdfId === pdfId);
-        setSelectedDeckId(pdfDeck?.id || allDecks[0]?.id || null);
+        const defaultDeck = pdfDeck?.id || allDecks[0]?.id || null;
+        if (creatingCardFor !== null) setSelectedDeckId(defaultDeck);
+        if (generatingQuizFor !== null) setQuizDeckId(defaultDeck);
       });
     }
-  }, [creatingCardFor, pdfId]);
+  }, [creatingCardFor, generatingQuizFor, pdfId]);
 
   const handleStartCreateCard = (highlightId: number) => {
     setCreatingCardFor(highlightId);
     setCardBack('');
     setShowSuccess(null);
+    setGeneratingQuizFor(null); // Close quiz panel if open
   };
 
   const handleCancelCreate = () => {
@@ -91,6 +100,51 @@ export default function HighlightsSidebar({
       setTimeout(() => setShowSuccess(null), 2000);
     } catch (error) {
       console.error('Failed to create flashcard:', error);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // AI Quiz Generation
+  const handleStartQuizGeneration = (highlightId: number) => {
+    setGeneratingQuizFor(highlightId);
+    setQuizError(null);
+    setQuizSuccess(null);
+    setCreatingCardFor(null); // Close manual panel if open
+  };
+
+  const handleCancelQuizGeneration = () => {
+    setGeneratingQuizFor(null);
+    setQuizDeckId(null);
+    setQuizError(null);
+  };
+
+  const handleGenerateQuiz = async (highlight: Highlight) => {
+    if (!quizDeckId) return;
+
+    setIsCreating(true);
+    setQuizError(null);
+
+    try {
+      const result = await window.electronAPI.generateQuizFromHighlight(
+        highlight.textContent,
+        quizDeckId,
+        highlight.id,
+        highlight.pageNum
+      );
+
+      if (result.success) {
+        setQuizSuccess({ highlightId: highlight.id, count: result.cardsCreated || 0 });
+        setGeneratingQuizFor(null);
+        setQuizDeckId(null);
+
+        // Hide success after 3 seconds
+        setTimeout(() => setQuizSuccess(null), 3000);
+      } else {
+        setQuizError(result.error || 'Fehler bei der Generierung');
+      }
+    } catch (error: any) {
+      setQuizError(error.message || 'Unbekannter Fehler');
     } finally {
       setIsCreating(false);
     }
@@ -219,8 +273,15 @@ export default function HighlightsSidebar({
                     </p>
                   </div>
 
-                  {/* Flashcard button */}
-                  {showSuccess === highlight.id ? (
+                  {/* Quiz Success indicator */}
+                  {quizSuccess?.highlightId === highlight.id ? (
+                    <span className="text-green-500 text-xs font-medium flex items-center gap-1 flex-shrink-0">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      {quizSuccess.count} Karten
+                    </span>
+                  ) : showSuccess === highlight.id ? (
                     <span className="text-green-500 text-xs font-medium flex items-center gap-1 flex-shrink-0">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -228,15 +289,29 @@ export default function HighlightsSidebar({
                       Erstellt
                     </span>
                   ) : (
-                    <button
-                      onClick={() => handleStartCreateCard(highlight.id)}
-                      className="p-1 hover:bg-primary-100 dark:hover:bg-primary-900/30 rounded text-gray-400 hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400 transition-colors z-30 flex-shrink-0"
-                      title="Karteikarte erstellen"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                    </button>
+                    <>
+                      {/* AI Quiz Button */}
+                      <button
+                        onClick={() => handleStartQuizGeneration(highlight.id)}
+                        className="p-1 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded text-gray-400 hover:text-purple-500 dark:text-gray-500 dark:hover:text-purple-400 transition-colors z-30 flex-shrink-0"
+                        title="KI-Quiz generieren"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                        </svg>
+                      </button>
+
+                      {/* Manual Flashcard button */}
+                      <button
+                        onClick={() => handleStartCreateCard(highlight.id)}
+                        className="p-1 hover:bg-primary-100 dark:hover:bg-primary-900/30 rounded text-gray-400 hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400 transition-colors z-30 flex-shrink-0"
+                        title="Karteikarte manuell erstellen"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                      </button>
+                    </>
                   )}
 
                   {/* Delete button - always visible, higher z-index */}
@@ -251,7 +326,69 @@ export default function HighlightsSidebar({
                   </button>
                 </div>
 
-                {/* Inline Flashcard Creator */}
+                {/* AI Quiz Generator Panel */}
+                {generatingQuizFor === highlight.id && (
+                  <div className="mt-2 p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                    <div className="text-xs text-purple-600 dark:text-purple-400 mb-2 font-medium">
+                      KI-Quiz aus Markierung
+                    </div>
+
+                    {quizError && (
+                      <div className="text-xs text-red-500 mb-2 p-1 bg-red-50 dark:bg-red-900/20 rounded">
+                        {quizError}
+                      </div>
+                    )}
+
+                    {/* Deck selector */}
+                    <select
+                      value={quizDeckId || ''}
+                      onChange={(e) => setQuizDeckId(Number(e.target.value))}
+                      className="w-full text-xs p-1.5 mb-2 rounded border border-purple-300 dark:border-purple-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                    >
+                      <option value="" disabled>Deck auswählen...</option>
+                      {decks.map((deck) => (
+                        <option key={deck.id} value={deck.id}>
+                          {deck.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                      Generiert 1-3 Karteikarten basierend auf der Textlänge
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={handleCancelQuizGeneration}
+                        className="px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition-colors"
+                      >
+                        Abbrechen
+                      </button>
+                      <button
+                        onClick={() => handleGenerateQuiz(highlight)}
+                        disabled={!quizDeckId || isCreating}
+                        className="px-2 py-1 text-xs bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
+                      >
+                        {isCreating ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Generiere...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Generieren
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Inline Flashcard Creator (Manual) */}
                 {creatingCardFor === highlight.id && (
                   <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
                     <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">

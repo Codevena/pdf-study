@@ -7,16 +7,21 @@ import PageThumbnails from './PageThumbnails';
 import TableOfContents from './TableOfContents';
 import HighlightToolbar from './HighlightToolbar';
 import HighlightsSidebar from './HighlightsSidebar';
+import ExplanationSidebar from './ExplanationSidebar';
+import SummarySidebar from './SummarySidebar';
 import ExportModal from '../export/ExportModal';
 import SearchBar from './SearchBar';
-import type { Highlight, HighlightRect, PDFDocument } from '../../../shared/types';
+import type { Highlight, HighlightRect, PDFDocument, ExplanationStyle } from '../../../shared/types';
+import { useToast } from '../ui/Toast';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-// Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Set up PDF.js worker - bundled locally for offline support
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 export default function PDFViewer() {
+  const { showToast } = useToast();
   const { currentPdf, currentPage, setCurrentPage, searchQuery, presentationMode, setPresentationMode } = useAppStore();
   const [numPages, setNumPages] = useState<number>(0);
   const [scale, setScale] = useState(1.2);
@@ -30,6 +35,15 @@ export default function PDFViewer() {
   const [showLaserPointer, setShowLaserPointer] = useState(false);
   const [laserPosition, setLaserPosition] = useState({ x: 0, y: 0 });
   const [highlights, setHighlights] = useState<Highlight[]>([]);
+
+  // AI Explanation state
+  const [showExplanations, setShowExplanations] = useState(false);
+  const [explanationStyle, setExplanationStyle] = useState<ExplanationStyle>('short');
+  const [isExplaining, setIsExplaining] = useState(false);
+  const [pendingExplanation, setPendingExplanation] = useState<string | null>(null);
+
+  // AI Summary state
+  const [showSummaries, setShowSummaries] = useState(false);
 
   // In-PDF Search state
   const [showSearchBar, setShowSearchBar] = useState(false);
@@ -45,6 +59,11 @@ export default function PDFViewer() {
   } | null>(null);
   const pageRef = useRef<HTMLDivElement>(null);
 
+  // Reading session tracking
+  const sessionStartPageRef = useRef<number | null>(null);
+  const sessionPdfIdRef = useRef<number | null>(null);
+  const maxPageReachedRef = useRef<number>(1);
+
   // Load PDF using custom protocol (efficient streaming, no base64)
   useEffect(() => {
     if (currentPdf) {
@@ -55,6 +74,39 @@ export default function PDFViewer() {
       setPdfData(protocolUrl);
     }
   }, [currentPdf]);
+
+  // Reading session tracking - start session when PDF opens, save when it closes
+  useEffect(() => {
+    if (currentPdf) {
+      // Start new session
+      sessionStartPageRef.current = currentPage;
+      sessionPdfIdRef.current = currentPdf.id;
+      maxPageReachedRef.current = currentPage;
+    }
+
+    return () => {
+      // Save session when PDF changes or component unmounts
+      if (sessionPdfIdRef.current !== null && sessionStartPageRef.current !== null) {
+        const startPage = sessionStartPageRef.current;
+        const maxPage = maxPageReachedRef.current;
+        const pdfId = sessionPdfIdRef.current;
+
+        // Calculate pages read as the range covered
+        const pagesRead = Math.abs(maxPage - startPage) + 1;
+
+        if (pagesRead > 0) {
+          window.electronAPI.addReadingSession(pdfId, pagesRead).catch(console.error);
+        }
+      }
+    };
+  }, [currentPdf?.id]); // Only re-run when PDF changes
+
+  // Track the maximum page reached during this session
+  useEffect(() => {
+    if (currentPdf && sessionPdfIdRef.current === currentPdf.id) {
+      maxPageReachedRef.current = Math.max(maxPageReachedRef.current, currentPage);
+    }
+  }, [currentPage, currentPdf]);
 
   // Load highlights when page changes
   useEffect(() => {
@@ -120,6 +172,12 @@ export default function PDFViewer() {
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !pageRef.current) {
+      setSelectionData(null);
+      return;
+    }
+
+    // Check if the selection is within the PDF page area
+    if (!pageRef.current.contains(selection.anchorNode)) {
       setSelectionData(null);
       return;
     }
@@ -238,6 +296,45 @@ export default function PDFViewer() {
     window.getSelection()?.removeAllRanges();
     setSelectionData(null);
   }, [selectionData, currentPdf, currentPage, highlights, rectsOverlap, mergeOverlappingRects]);
+
+  // Handle AI explanation request
+  const handleExplainSelection = useCallback(async () => {
+    if (!selectionData || !currentPdf) return;
+
+    setShowExplanations(true);
+    setIsExplaining(true);
+    setPendingExplanation(selectionData.text);
+
+    try {
+      const result = await window.electronAPI.explainText(
+        selectionData.text,
+        explanationStyle,
+        currentPdf.id,
+        currentPage
+      );
+
+      if (!result.success) {
+        const errorMsg = result.error || 'Unbekannter Fehler';
+        if (errorMsg.includes('API key') || errorMsg.includes('api_key') || errorMsg.includes('401')) {
+          showToast('API-Key fehlt oder ist ungultig. Bitte in den Einstellungen prufen.', 'error');
+        } else if (errorMsg.includes('429') || errorMsg.includes('rate limit')) {
+          showToast('API-Limit erreicht. Bitte spater erneut versuchen.', 'error');
+        } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+          showToast('Netzwerkfehler. Bitte Internetverbindung prufen.', 'error');
+        } else {
+          showToast(`Fehler: ${errorMsg}`, 'error');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to generate explanation:', error);
+      showToast('Fehler bei der KI-Erklarung. Bitte erneut versuchen.', 'error');
+    } finally {
+      setIsExplaining(false);
+      setPendingExplanation(null);
+      window.getSelection()?.removeAllRanges();
+      setSelectionData(null);
+    }
+  }, [selectionData, currentPdf, currentPage, explanationStyle, showToast]);
 
   const onDocumentLoadSuccess = (pdf: any) => {
     setNumPages(pdf.numPages);
@@ -418,6 +515,8 @@ export default function PDFViewer() {
           if (showThumbnails) setShowThumbnails(false);
           if (showToc) setShowToc(false);
           if (showHighlightsSidebar) setShowHighlightsSidebar(false);
+          if (showExplanations) setShowExplanations(false);
+          if (showSummaries) setShowSummaries(false);
         }
         break;
       case 't':
@@ -438,6 +537,16 @@ export default function PDFViewer() {
       case 'h':
         if (!e.metaKey && !e.ctrlKey && !presentationMode) {
           setShowHighlightsSidebar((s) => !s);
+        }
+        break;
+      case 'e':
+        if (!e.metaKey && !e.ctrlKey && !presentationMode) {
+          setShowExplanations((s) => !s);
+        }
+        break;
+      case 's':
+        if (!e.metaKey && !e.ctrlKey && !presentationMode) {
+          setShowSummaries((s) => !s);
         }
         break;
 
@@ -467,7 +576,7 @@ export default function PDFViewer() {
         }
         break;
     }
-  }, [currentPage, numPages, goToPage, showNotes, showThumbnails, showToc, showHighlightsSidebar, presentationMode, enterPresentationMode, exitPresentationMode]);
+  }, [currentPage, numPages, goToPage, showNotes, showThumbnails, showToc, showHighlightsSidebar, showExplanations, showSummaries, presentationMode, enterPresentationMode, exitPresentationMode]);
 
   // Highlight search terms in the text layer (supports both global and PDF search)
   const highlightSearchTerms = useCallback(() => {
@@ -741,6 +850,28 @@ export default function PDFViewer() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
               </button>
+
+              {/* Explanations Toggle */}
+              <button
+                onClick={() => setShowExplanations(!showExplanations)}
+                className={`p-1.5 rounded transition-colors ${showExplanations ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400' : 'hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'}`}
+                title="KI-Erklärungen (e)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </button>
+
+              {/* Summaries Toggle */}
+              <button
+                onClick={() => setShowSummaries(!showSummaries)}
+                className={`p-1.5 rounded transition-colors ${showSummaries ? 'bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-400' : 'hover:bg-gray-100 dark:hover:bg-gray-700 dark:text-gray-300'}`}
+                title="KI-Zusammenfassungen (s)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </button>
             </div>
 
             {/* Mobile: Dropdown menu for sidebar toggles */}
@@ -789,6 +920,24 @@ export default function PDFViewer() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                   </svg>
                   Markierungen
+                </button>
+                <button
+                  onClick={() => setShowExplanations(!showExplanations)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  KI-Erklärungen
+                </button>
+                <button
+                  onClick={() => setShowSummaries(!showSummaries)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <svg className="w-4 h-4 text-teal-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  KI-Zusammenfassungen
                 </button>
               </div>
             </div>
@@ -922,11 +1071,39 @@ export default function PDFViewer() {
         />
       )}
 
+      {/* Explanations Sidebar */}
+      {currentPdf && (
+        <ExplanationSidebar
+          isOpen={showExplanations}
+          onClose={() => setShowExplanations(false)}
+          pdfId={currentPdf.id}
+          currentPage={currentPage}
+          onNavigate={goToPage}
+          pendingText={pendingExplanation}
+          isExplaining={isExplaining}
+          explanationStyle={explanationStyle}
+          onStyleChange={setExplanationStyle}
+        />
+      )}
+
+      {/* Summary Sidebar */}
+      {currentPdf && (
+        <SummarySidebar
+          isOpen={showSummaries}
+          onClose={() => setShowSummaries(false)}
+          pdfId={currentPdf.id}
+          filePath={currentPdf.filePath}
+          numPages={numPages}
+          currentPage={currentPage}
+        />
+      )}
+
       {/* Highlight Toolbar */}
       {selectionData && (
         <HighlightToolbar
           position={selectionData.toolbarPosition}
           onHighlight={handleCreateHighlight}
+          onExplain={handleExplainSelection}
           onClose={() => {
             window.getSelection()?.removeAllRanges();
             setSelectionData(null);

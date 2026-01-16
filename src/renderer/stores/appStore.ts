@@ -54,8 +54,8 @@ interface AppState {
   setOCRStatus: (status: OCRStatus) => void;
 
   // UI State
-  sidebarView: 'library' | 'search' | 'bookmarks' | 'recent' | 'flashcards';
-  setSidebarView: (view: 'library' | 'search' | 'bookmarks' | 'recent' | 'flashcards') => void;
+  sidebarView: 'library' | 'search' | 'bookmarks' | 'recent' | 'flashcards' | 'reading';
+  setSidebarView: (view: 'library' | 'search' | 'bookmarks' | 'recent' | 'flashcards' | 'reading') => void;
   mobileSidebarOpen: boolean;
   setMobileSidebarOpen: (open: boolean) => void;
   mainContentView: 'pdf' | 'study';

@@ -1,5 +1,5 @@
 import type { DatabaseInstance } from './index';
-import type { PDFDocument, SearchResult, Tag, Bookmark, Note, Highlight, HighlightRect } from '../../shared/types';
+import type { PDFDocument, SearchResult, Tag, Bookmark, Note, Highlight, HighlightRect, Explanation, ExplanationStyle, Summary } from '../../shared/types';
 
 // PDF Queries
 export function getAllPdfs(db: DatabaseInstance): PDFDocument[] {
@@ -706,4 +706,295 @@ export function getBatchExportData(db: DatabaseInstance): BatchExportData {
     highlightsByPdf: getAllHighlightsGrouped(db),
     tagsByPdf: getAllPdfTagsMap(db),
   };
+}
+
+// =============================================================================
+// AI Explanation Queries
+// =============================================================================
+
+export function addExplanation(
+  db: DatabaseInstance,
+  pdfId: number,
+  pageNum: number,
+  selectedText: string,
+  explanation: string,
+  style: ExplanationStyle
+): number {
+  const result = db.prepare(`
+    INSERT INTO explanations (pdf_id, page_num, selected_text, explanation, style)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(pdfId, pageNum, selectedText, explanation, style);
+  return Number(result.lastInsertRowid);
+}
+
+export function getExplanations(
+  db: DatabaseInstance,
+  pdfId: number,
+  pageNum?: number
+): Explanation[] {
+  if (pageNum !== undefined) {
+    return db.prepare(`
+      SELECT id, pdf_id as pdfId, page_num as pageNum, selected_text as selectedText,
+             explanation, style, created_at as createdAt
+      FROM explanations
+      WHERE pdf_id = ? AND page_num = ?
+      ORDER BY created_at DESC
+    `).all(pdfId, pageNum) as Explanation[];
+  }
+  return db.prepare(`
+    SELECT id, pdf_id as pdfId, page_num as pageNum, selected_text as selectedText,
+           explanation, style, created_at as createdAt
+    FROM explanations
+    WHERE pdf_id = ?
+    ORDER BY page_num, created_at DESC
+  `).all(pdfId) as Explanation[];
+}
+
+export function deleteExplanation(db: DatabaseInstance, id: number): void {
+  db.prepare('DELETE FROM explanations WHERE id = ?').run(id);
+}
+
+// =============================================================================
+// AI Summary Queries
+// =============================================================================
+
+export function addSummary(
+  db: DatabaseInstance,
+  pdfId: number,
+  startPage: number,
+  endPage: number,
+  title: string,
+  content: string
+): number {
+  const result = db.prepare(`
+    INSERT INTO summaries (pdf_id, start_page, end_page, title, content)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(pdfId, startPage, endPage, title, content);
+  return Number(result.lastInsertRowid);
+}
+
+export function getSummaries(db: DatabaseInstance, pdfId: number): Summary[] {
+  return db.prepare(`
+    SELECT id, pdf_id as pdfId, start_page as startPage, end_page as endPage,
+           title, content, created_at as createdAt
+    FROM summaries
+    WHERE pdf_id = ?
+    ORDER BY start_page, created_at DESC
+  `).all(pdfId) as Summary[];
+}
+
+export function deleteSummary(db: DatabaseInstance, id: number): void {
+  db.prepare('DELETE FROM summaries WHERE id = ?').run(id);
+}
+
+// =============================================================================
+// Reading Progress Queries
+// =============================================================================
+
+export interface ReadingStats {
+  todayPages: number;
+  weekPages: number;
+  totalPages: number;
+  streak: number;
+  dailyGoal: number;
+  goalProgress: number;
+}
+
+export interface PdfWithProgress {
+  id: number;
+  fileName: string;
+  filePath: string;
+  pageCount: number;
+  currentPage: number;
+  progress: number;
+  lastViewed: string | null;
+}
+
+export interface ReadingHeatmapData {
+  data: { date: string; count: number }[];
+  maxCount: number;
+  totalPages: number;
+  streak: number;
+  startDate: string;
+  endDate: string;
+}
+
+// Add a reading session (called when PDF is closed)
+export function addReadingSession(db: DatabaseInstance, pdfId: number, pagesRead: number): void {
+  if (pagesRead <= 0) return;
+
+  // Check if there's already a session for today for this PDF
+  const existing = db.prepare(`
+    SELECT id, pages_read FROM reading_sessions
+    WHERE pdf_id = ? AND session_date = DATE('now')
+  `).get(pdfId) as { id: number; pages_read: number } | undefined;
+
+  if (existing) {
+    // Update existing session
+    db.prepare(`
+      UPDATE reading_sessions SET pages_read = pages_read + ? WHERE id = ?
+    `).run(pagesRead, existing.id);
+  } else {
+    // Create new session
+    db.prepare(`
+      INSERT INTO reading_sessions (pdf_id, pages_read, session_date)
+      VALUES (?, ?, DATE('now'))
+    `).run(pdfId, pagesRead);
+  }
+}
+
+// Calculate reading streak (consecutive days with reading activity)
+export function calculateReadingStreak(db: DatabaseInstance): number {
+  const dates = db.prepare(`
+    SELECT DISTINCT session_date as date
+    FROM reading_sessions
+    ORDER BY session_date DESC
+  `).all() as { date: string }[];
+
+  if (dates.length === 0) return 0;
+
+  let streak = 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const firstDate = new Date(dates[0].date + 'T00:00:00');
+  const diffFromToday = Math.floor((today.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Streak broken if more than 1 day gap from today
+  if (diffFromToday > 1) {
+    return 0;
+  }
+
+  // Count consecutive days
+  let expectedDate = new Date(firstDate);
+  for (const { date } of dates) {
+    const currentDate = new Date(date + 'T00:00:00');
+    const diff = Math.floor((expectedDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diff === 0) {
+      streak++;
+      expectedDate.setDate(expectedDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+
+  return streak;
+}
+
+// Get pages read today
+export function getTodayReadPages(db: DatabaseInstance): number {
+  const result = db.prepare(`
+    SELECT COALESCE(SUM(pages_read), 0) as total
+    FROM reading_sessions
+    WHERE session_date = DATE('now')
+  `).get() as { total: number };
+  return result.total;
+}
+
+// Get reading goal
+export function getReadingGoal(db: DatabaseInstance): { dailyPages: number } {
+  const result = db.prepare(`
+    SELECT daily_pages FROM reading_goals ORDER BY id DESC LIMIT 1
+  `).get() as { daily_pages: number } | undefined;
+  return { dailyPages: result?.daily_pages ?? 20 };
+}
+
+// Set reading goal
+export function setReadingGoal(db: DatabaseInstance, dailyPages: number): void {
+  const existing = db.prepare('SELECT id FROM reading_goals LIMIT 1').get();
+  if (existing) {
+    db.prepare(`
+      UPDATE reading_goals SET daily_pages = ?, updated_at = CURRENT_TIMESTAMP
+    `).run(dailyPages);
+  } else {
+    db.prepare(`
+      INSERT INTO reading_goals (daily_pages) VALUES (?)
+    `).run(dailyPages);
+  }
+}
+
+// Get reading stats
+export function getReadingStats(db: DatabaseInstance): ReadingStats {
+  const todayPages = getTodayReadPages(db);
+
+  const weekPages = db.prepare(`
+    SELECT COALESCE(SUM(pages_read), 0) as total
+    FROM reading_sessions
+    WHERE session_date >= DATE('now', '-7 days')
+  `).get() as { total: number };
+
+  const totalPages = db.prepare(`
+    SELECT COALESCE(SUM(pages_read), 0) as total
+    FROM reading_sessions
+  `).get() as { total: number };
+
+  const streak = calculateReadingStreak(db);
+  const goal = getReadingGoal(db);
+  const goalProgress = goal.dailyPages > 0
+    ? Math.min(100, Math.round((todayPages / goal.dailyPages) * 100))
+    : 0;
+
+  return {
+    todayPages,
+    weekPages: weekPages.total,
+    totalPages: totalPages.total,
+    streak,
+    dailyGoal: goal.dailyPages,
+    goalProgress,
+  };
+}
+
+// Get reading heatmap data
+export function getReadingHeatmapData(
+  db: DatabaseInstance,
+  timeframe: 'week' | 'month' | 'year'
+): ReadingHeatmapData {
+  const daysMap: Record<string, number> = { week: 7, month: 30, year: 365 };
+  const days = daysMap[timeframe];
+
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days + 1);
+
+  const rows = db.prepare(`
+    SELECT session_date as date, SUM(pages_read) as count
+    FROM reading_sessions
+    WHERE session_date >= DATE('now', '-${days} days')
+    GROUP BY session_date
+    ORDER BY session_date
+  `).all() as { date: string; count: number }[];
+
+  const maxCount = rows.reduce((max, r) => Math.max(max, r.count), 0);
+  const totalPages = rows.reduce((sum, r) => sum + r.count, 0);
+  const streak = calculateReadingStreak(db);
+
+  return {
+    data: rows,
+    maxCount,
+    totalPages,
+    streak,
+    startDate: startDate.toISOString().split('T')[0],
+    endDate: endDate.toISOString().split('T')[0],
+  };
+}
+
+// Get all PDFs with reading progress
+export function getAllPdfsWithProgress(db: DatabaseInstance): PdfWithProgress[] {
+  return db.prepare(`
+    SELECT
+      p.id,
+      p.file_name as fileName,
+      p.file_path as filePath,
+      COALESCE(p.page_count, 0) as pageCount,
+      COALESCE(rv.page_num, 1) as currentPage,
+      CASE
+        WHEN p.page_count > 0 THEN ROUND((COALESCE(rv.page_num, 1) * 100.0) / p.page_count)
+        ELSE 0
+      END as progress,
+      rv.viewed_at as lastViewed
+    FROM pdfs p
+    LEFT JOIN recent_views rv ON rv.pdf_id = p.id
+    ORDER BY rv.viewed_at DESC NULLS LAST, p.file_name
+  `).all() as PdfWithProgress[];
 }

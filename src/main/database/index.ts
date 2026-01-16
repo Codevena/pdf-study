@@ -201,6 +201,44 @@ export async function initDatabase(): Promise<DatabaseInstance> {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- AI Explanations for selected text
+    CREATE TABLE IF NOT EXISTS explanations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pdf_id INTEGER NOT NULL REFERENCES pdfs(id) ON DELETE CASCADE,
+      page_num INTEGER NOT NULL,
+      selected_text TEXT NOT NULL,
+      explanation TEXT NOT NULL,
+      style TEXT NOT NULL DEFAULT 'short',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- AI Summaries for page ranges
+    CREATE TABLE IF NOT EXISTS summaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pdf_id INTEGER NOT NULL REFERENCES pdfs(id) ON DELETE CASCADE,
+      start_page INTEGER NOT NULL,
+      end_page INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Reading Sessions for progress tracking
+    CREATE TABLE IF NOT EXISTS reading_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      pdf_id INTEGER REFERENCES pdfs(id) ON DELETE CASCADE,
+      pages_read INTEGER NOT NULL,
+      session_date DATE DEFAULT (DATE('now')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Reading Goals (daily page target)
+    CREATE TABLE IF NOT EXISTS reading_goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      daily_pages INTEGER DEFAULT 20,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Indexes
     CREATE INDEX IF NOT EXISTS idx_pdfs_file_path ON pdfs(file_path);
     CREATE INDEX IF NOT EXISTS idx_pdfs_file_name ON pdfs(file_name);
@@ -218,6 +256,10 @@ export async function initDatabase(): Promise<DatabaseInstance> {
     CREATE INDEX IF NOT EXISTS idx_pdf_tags_tag ON pdf_tags(tag_id);
     CREATE INDEX IF NOT EXISTS idx_recent_views_pdf ON recent_views(pdf_id);
     CREATE INDEX IF NOT EXISTS idx_api_usage_date ON api_usage(created_at);
+    CREATE INDEX IF NOT EXISTS idx_explanations_pdf_page ON explanations(pdf_id, page_num);
+    CREATE INDEX IF NOT EXISTS idx_summaries_pdf ON summaries(pdf_id);
+    CREATE INDEX IF NOT EXISTS idx_reading_sessions_date ON reading_sessions(session_date);
+    CREATE INDEX IF NOT EXISTS idx_reading_sessions_pdf ON reading_sessions(pdf_id);
   `);
 
   // Run migrations for existing databases

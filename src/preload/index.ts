@@ -26,6 +26,12 @@ import type {
   Backlink,
   LinkResolution,
   LinkGraph,
+  Explanation,
+  ExplanationStyle,
+  ExplainResult,
+  Summary,
+  SummaryResult,
+  QuizFromHighlightResult,
 } from '../shared/types';
 
 // Extended FlashcardWithFSRS with next intervals preview
@@ -346,6 +352,89 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearApiUsage: (): Promise<{ success: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.API_CLEAR_USAGE),
 
+  // ============ AI EXPLANATIONS ============
+
+  explainText: (
+    text: string,
+    style: ExplanationStyle,
+    pdfId: number,
+    pageNum: number
+  ): Promise<ExplainResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.EXPLAIN_TEXT, text, style, pdfId, pageNum),
+
+  getExplanations: (pdfId: number, pageNum?: number): Promise<Explanation[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_EXPLANATIONS, pdfId, pageNum),
+
+  deleteExplanation: (id: number): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DELETE_EXPLANATION, id),
+
+  // ============ AI QUIZ FROM HIGHLIGHT ============
+
+  generateQuizFromHighlight: (
+    highlightText: string,
+    deckId: number,
+    highlightId: number,
+    pageNum: number
+  ): Promise<QuizFromHighlightResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GENERATE_QUIZ_FROM_HIGHLIGHT, highlightText, deckId, highlightId, pageNum),
+
+  // ============ AI SUMMARIES ============
+
+  generateSummary: (
+    pdfId: number,
+    filePath: string,
+    startPage: number,
+    endPage: number
+  ): Promise<SummaryResult & { title?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GENERATE_SUMMARY, pdfId, filePath, startPage, endPage),
+
+  getSummaries: (pdfId: number): Promise<Summary[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SUMMARIES, pdfId),
+
+  deleteSummary: (id: number): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DELETE_SUMMARY, id),
+
+  // ============ READING PROGRESS ============
+
+  addReadingSession: (pdfId: number, pagesRead: number): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.READING_ADD_SESSION, pdfId, pagesRead),
+
+  getReadingHeatmap: (
+    timeframe: 'week' | 'month' | 'year'
+  ): Promise<{
+    data: { date: string; count: number }[];
+    maxCount: number;
+    totalPages: number;
+    streak: number;
+    startDate: string;
+    endDate: string;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.READING_GET_HEATMAP, timeframe),
+
+  getReadingStats: (): Promise<{
+    todayPages: number;
+    weekPages: number;
+    totalPages: number;
+    streak: number;
+    dailyGoal: number;
+    goalProgress: number;
+  }> => ipcRenderer.invoke(IPC_CHANNELS.READING_GET_STATS),
+
+  getReadingGoal: (): Promise<{ dailyPages: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.READING_GET_GOAL),
+
+  setReadingGoal: (dailyPages: number): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.READING_SET_GOAL, dailyPages),
+
+  getAllPdfsWithProgress: (): Promise<Array<{
+    id: number;
+    fileName: string;
+    filePath: string;
+    pageCount: number;
+    currentPage: number;
+    progress: number;
+    lastViewed: string | null;
+  }>> => ipcRenderer.invoke(IPC_CHANNELS.PDF_GET_ALL_WITH_PROGRESS),
+
   // Event Listeners
   onIndexingProgress: (callback: (status: IndexingStatus) => void) => {
     const listener = (_: any, status: IndexingStatus) => callback(status);
@@ -457,6 +546,23 @@ declare global {
       // API Usage / Cost Tracking
       getApiUsageStats: () => Promise<{ totalCostUsd: number; totalTokens: number; callCount: number; costByModel: Record<string, number>; costByOperation: Record<string, number>; recentUsage: Array<{ id: number; model: string; operation: string; promptTokens: number; completionTokens: number; totalTokens: number; costUsd: number; createdAt: string }> }>;
       clearApiUsage: () => Promise<{ success: boolean }>;
+      // AI Explanations
+      explainText: (text: string, style: ExplanationStyle, pdfId: number, pageNum: number) => Promise<ExplainResult>;
+      getExplanations: (pdfId: number, pageNum?: number) => Promise<Explanation[]>;
+      deleteExplanation: (id: number) => Promise<{ success: boolean }>;
+      // AI Quiz from Highlight
+      generateQuizFromHighlight: (highlightText: string, deckId: number, highlightId: number, pageNum: number) => Promise<QuizFromHighlightResult>;
+      // AI Summaries
+      generateSummary: (pdfId: number, filePath: string, startPage: number, endPage: number) => Promise<SummaryResult & { title?: string }>;
+      getSummaries: (pdfId: number) => Promise<Summary[]>;
+      deleteSummary: (id: number) => Promise<{ success: boolean }>;
+      // Reading Progress
+      addReadingSession: (pdfId: number, pagesRead: number) => Promise<{ success: boolean }>;
+      getReadingHeatmap: (timeframe: 'week' | 'month' | 'year') => Promise<{ data: { date: string; count: number }[]; maxCount: number; totalPages: number; streak: number; startDate: string; endDate: string }>;
+      getReadingStats: () => Promise<{ todayPages: number; weekPages: number; totalPages: number; streak: number; dailyGoal: number; goalProgress: number }>;
+      getReadingGoal: () => Promise<{ dailyPages: number }>;
+      setReadingGoal: (dailyPages: number) => Promise<{ success: boolean }>;
+      getAllPdfsWithProgress: () => Promise<Array<{ id: number; fileName: string; filePath: string; pageCount: number; currentPage: number; progress: number; lastViewed: string | null }>>;
       // Events
       onIndexingProgress: (callback: (status: IndexingStatus) => void) => () => void;
       onPdfAdded: (callback: (pdfs: PDFDocument[]) => void) => () => void;

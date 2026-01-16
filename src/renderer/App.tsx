@@ -7,6 +7,7 @@ import PDFViewer from './components/pdf/PDFViewer';
 import WelcomeScreen from './components/WelcomeScreen';
 import FlashcardStudyView from './components/flashcards/FlashcardStudyView';
 import StudyDeckSelector from './components/flashcards/StudyDeckSelector';
+import { ToastProvider } from './components/ui/Toast';
 
 function App() {
   const {
@@ -157,6 +158,7 @@ function App() {
   const canShowStudy = currentDeck && dueFlashcards.length > 0;
 
   return (
+    <ToastProvider>
     <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
       <Header />
       <div className="flex flex-1 overflow-hidden">
@@ -285,6 +287,7 @@ function App() {
         onSelectDeck={handleSelectStudyDeck}
       />
     </div>
+    </ToastProvider>
   );
 }
 

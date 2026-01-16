@@ -115,6 +115,55 @@ export interface OutlineItem {
   children: OutlineItem[];
 }
 
+// AI Explanation Types
+export type ExplanationStyle = 'short' | 'detailed';
+
+export interface Explanation {
+  id: number;
+  pdfId: number;
+  pageNum: number;
+  selectedText: string;
+  explanation: string;
+  style: ExplanationStyle;
+  createdAt: string;
+}
+
+export interface ExplainResult {
+  success: boolean;
+  explanation?: string;
+  id?: number;
+  cost?: number;
+  error?: string;
+}
+
+// AI Summary Types
+export interface Summary {
+  id: number;
+  pdfId: number;
+  startPage: number;
+  endPage: number;
+  title: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface SummaryResult {
+  success: boolean;
+  summary?: string;
+  id?: number;
+  cost?: number;
+  error?: string;
+}
+
+// AI Quiz from Highlight Result
+export interface QuizFromHighlightResult {
+  success: boolean;
+  cardsCreated?: number;
+  deckId?: number;
+  cost?: number;
+  error?: string;
+}
+
 // Highlight Types
 export interface HighlightRect {
   x: number;      // percentage of page width
